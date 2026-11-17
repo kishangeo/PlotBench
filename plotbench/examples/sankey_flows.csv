@@ -1,0 +1,8 @@
+# Material flows for a Sankey diagram. Synthetic example data for PlotBench (not measurements).
+From,To,Amount (kt)
+Mine,Mill,100
+Mine,Waste rock,40
+Mill,Smelter,62
+Mill,Tailings,38
+Smelter,Metal,49
+Smelter,Slag,13

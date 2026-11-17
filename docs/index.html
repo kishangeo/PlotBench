@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PlotBench</title>
+<meta name="description" content="Free desktop app for scientific graphing, peak fitting, petrology, thermobarometry and geochronology. Windows, macOS and Linux.">
+<meta name="author" content="Kishan Tiwari">
+<link rel="icon" href="img/logo.png">
+<meta property="og:title" content="PlotBench">
+<meta property="og:description" content="From EPMA, LA-ICP-MS and spectra to publication figures, without code.">
+<meta property="og:image" content="https://kishangeo.github.io/PlotBench/img/window.png">
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--text:#1f2328;--muted:#5f6670;--border:#dfe2e7;--accent:#1f8f86;--accent2:#176f68;--tint:#e8f4f3}
+@media (prefers-color-scheme:dark){:root{--bg:#17181b;--panel:#202226;--text:#e7e8ea;--muted:#a0a6ad;--border:#33363c;--accent:#2fb3a7;--accent2:#5cc9bf;--tint:#1d2f2e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 "Segoe UI",system-ui,-apple-system,Arial,sans-serif}
+a{color:var(--accent)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+header{background:var(--panel);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+header .wrap{display:flex;align-items:center;gap:20px;height:60px}
+header img{height:32px}
+header b{font-size:19px}
+nav{margin-left:auto;display:flex;gap:18px;flex-wrap:wrap}
+nav a{color:var(--muted);text-decoration:none;font-size:15px}
+nav a:hover{color:var(--accent)}
+.hero{padding:56px 0 30px;text-align:center}
+.hero h1{font-size:clamp(28px,4.4vw,46px);line-height:1.15;margin:0 0 14px}
+.hero p{font-size:19px;color:var(--muted);max-width:760px;margin:0 auto 26px}
+.btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-block;padding:12px 22px;border-radius:10px;background:var(--accent);color:#fff;text-decoration:none;font-weight:600}
+.btn:hover{background:var(--accent2)}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.small{font-size:14px;color:var(--muted)}
+.shot{margin:34px auto 0;border-radius:12px;border:1px solid var(--border);box-shadow:0 14px 40px rgba(0,0,0,.12);max-width:100%;display:block}
+section{padding:54px 0;border-top:1px solid var(--border)}
+h2{font-size:30px;margin:0 0 8px}
+.lead{color:var(--muted);margin:0 0 28px;max-width:800px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px}
+.card h3{margin:0 0 6px;font-size:18px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.gallery figure{margin:0;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.gallery img{width:100%;display:block}
+.gallery figcaption{font-size:14px;padding:8px 12px;color:#444;border-top:1px solid #eee}
+.tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:14.5px}
+th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{background:var(--tint);font-weight:600}
+tr:last-child td{border-bottom:none}
+td.y{color:var(--accent);font-weight:600}
+td.n{color:var(--muted)}
+tr.pb td{background:var(--tint)}
+.dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
+.dl .card{display:flex;flex-direction:column;gap:10px}
+.dl .btn{text-align:center}
+code{background:var(--tint);padding:1px 6px;border-radius:5px;font-size:14px}
+ol li{margin-bottom:6px}
+footer{padding:30px 0 50px;color:var(--muted);font-size:14px;border-top:1px solid var(--border)}
+@media (max-width:640px){nav{display:none}.hero{padding-top:36px}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <img src="img/logo.png" alt=""><b>PlotBench</b>
+  <nav><a href="#features">Features</a><a href="#gallery">Gallery</a><a href="#compare">Compare</a><a href="#download">Download</a><a href="https://github.com/kishangeo/PlotBench">GitHub</a></nav>
+</div></header>
+
+<div class="wrap hero">
+  <h1>From microprobe data to publication figures,<br>in one free app</h1>
+  <p>PlotBench combines spreadsheet-style graphing and peak fitting with petrology, mineral chemistry, thermobarometry and U-Pb geochronology. No coding, no Python or R to install.</p>
+  <div class="btns">
+    <a class="btn" href="#download">Download PlotBench</a>
+    <a class="btn ghost" href="https://github.com/kishangeo/PlotBench">Source code</a>
+  </div>
+  <p class="small" style="margin-top:14px">Windows · macOS · Linux &nbsp;|&nbsp; Free and open source (MIT License)</p>
+  <img class="shot" src="img/window.png" alt="PlotBench main window with a TAS diagram" width="1800" height="1050">
+</div>
+
+<section id="features"><div class="wrap">
+  <h2>What PlotBench does</h2>
+  <p class="lead">Earth scientists usually move their data between five or six programs to get from raw analyses to a finished figure. PlotBench does all of it in one workbook, and writes every result back into the sheet as a new column.</p>
+  <div class="grid">
+    <div class="card"><h3>Graphing</h3><p>83 plot types, journal-sized export to PNG, TIFF, PDF, SVG and EPS with a true-size preview, multi-panel figures with (a), (b), (c) labels, and editable text for Illustrator or Inkscape.</p></div>
+    <div class="card"><h3>Geochemistry</h3><p>TAS, AFM, Harker, Frost and Shand diagrams, Pearce granite and basalt discrimination, chondrite- and mantle-normalised spider diagrams, ternary plots and the CIPW norm.</p></div>
+    <div class="card"><h3>Mineral chemistry</h3><p>Mineral formulae from oxide wt%, Fe<sup>3+</sup> by charge balance (Droop 1987), and amphibole, pyroxene and feldspar classification.</p></div>
+    <div class="card"><h3>Thermobarometry</h3><p>45 thermometers, barometers and oxybarometers, including Putirka (2008), Holland &amp; Blundy (1994), Ti-in-zircon, Ti-in-quartz, Zr-in-titanite, Ghiorso &amp; Evans (2008) Fe-Ti oxides and Loucks et al. (2020) zircon. A solver finds P and T together.</p></div>
+    <div class="card"><h3>Geochronology</h3><p>Wetherill and Tera-Wasserburg concordia, concordia and weighted-mean ages, York isochrons, Stacey &amp; Kramers (1975) common-Pb correction, discordance filtering, and detrital KDE and PDP plots.</p></div>
+    <div class="card"><h3>Spectra and fitting</h3><p>A Peak Analyzer for Raman, FTIR and XRD spectra with baselines and Gaussian, Lorentzian, pseudo-Voigt and Voigt peaks; 47 nonlinear fit models with confidence bands.</p></div>
+    <div class="card"><h3>Statistics</h3><p>t-tests, ANOVA and post-hoc tests, non-parametric tests, PCA, clustering, discriminant analysis, regression, and mixed models.</p></div>
+    <div class="card"><h3>Built for real data</h3><p>Column names such as <code>SiO2</code>, <code>FeOt</code>, <code>La</code> or <code>207Pb/235U</code> are recognised automatically. Masked rows drop out of every plot and calculation, and values below detection are handled.</p></div>
+    <div class="card"><h3>Easy to learn</h3><p>A built-in manual with screenshots, 27 example data sets that open with a finished graph, Ctrl+K command search, and light and dark themes.</p></div>
+  </div>
+</div></section>
+
+<section id="gallery"><div class="wrap">
+  <h2>Gallery</h2>
+  <p class="lead">Each figure below comes straight from one of the example data sets that ship with the app.</p>
+  <div class="gallery">
+    <figure><img src="img/tas.png" alt="TAS diagram" loading="lazy"><figcaption>TAS classification (Le Bas et al. 1986)</figcaption></figure>
+    <figure><img src="img/concordia.png" alt="Wetherill concordia" loading="lazy"><figcaption>Wetherill concordia with error ellipses and concordia age</figcaption></figure>
+    <figure><img src="img/spider.png" alt="REE spider diagram" loading="lazy"><figcaption>Chondrite-normalised REE diagram</figcaption></figure>
+    <figure><img src="img/pearce.png" alt="Pearce 2008 diagram" loading="lazy"><figcaption>Th/Yb vs Nb/Yb (Pearce 2008)</figcaption></figure>
+    <figure><img src="img/pca.png" alt="PCA biplot" loading="lazy"><figcaption>PCA biplot of major oxides</figcaption></figure>
+    <figure><img src="img/ternary.png" alt="Ternary plot" loading="lazy"><figcaption>Ternary plot coloured by a fourth variable</figcaption></figure>
+    <figure><img src="img/raman.png" alt="Raman spectrum" loading="lazy"><figcaption>Raman spectrum for peak fitting</figcaption></figure>
+    <figure><img src="img/detrital.png" alt="Detrital zircon KDE" loading="lazy"><figcaption>Detrital zircon KDE and PDP</figcaption></figure>
+  </div>
+</div></section>
+
+<section id="compare"><div class="wrap">
+  <h2>How PlotBench compares</h2>
+  <p class="lead">Each of these tools is excellent at what it was built for, and PlotBench owes a lot to them. PlotBench's aim is to bring their main jobs into one place, with no coding.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Software</th><th>Interface</th><th>Geochemical diagrams</th><th>Thermobarometry</th><th>U-Pb geochronology</th><th>General graphing and peak fitting</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr class="pb"><td><b>PlotBench</b></td><td>Desktop app</td><td class="y">Yes</td><td class="y">Yes, 45 methods</td><td class="y">Yes</td><td class="y">Yes</td><td>Free, open source</td></tr>
+      <tr><td><a href="https://www.originlab.com/origin">OriginPro</a></td><td>Desktop app</td><td class="n">Through add-ons</td><td class="n">No</td><td class="n">No</td><td class="y">Yes, the benchmark</td><td>Commercial</td></tr>
+      <tr><td><a href="https://www.gcdkit.org/">GCDkit</a></td><td>R with a GUI</td><td class="y">Yes, extensive</td><td class="n">Saturation thermometry</td><td class="n">No</td><td class="n">Limited</td><td>Free, needs R</td></tr>
+      <tr><td><a href="https://pyrolite.readthedocs.io/">pyrolite</a></td><td>Python library</td><td class="y">Yes</td><td class="n">No</td><td class="n">No</td><td class="n">Through code</td><td>Free, needs Python</td></tr>
+      <tr><td><a href="https://thermobar.readthedocs.io/">Thermobar</a></td><td>Python library</td><td class="n">Limited</td><td class="y">Yes, the largest library</td><td class="n">No</td><td class="n">Through code</td><td>Free, needs Python</td></tr>
+      <tr><td><a href="https://isoplotr.es.ucl.ac.uk/">IsoplotR</a></td><td>Web app or R</td><td class="n">No</td><td class="n">No</td><td class="y">Yes, the reference tool</td><td class="n">No</td><td>Free</td></tr>
+      <tr><td><a href="https://labplot.org/">LabPlot</a> / <a href="https://veusz.github.io/">Veusz</a></td><td>Desktop app</td><td class="n">No</td><td class="n">No</td><td class="n">No</td><td class="y">Yes</td><td>Free, open source</td></tr>
+    </tbody>
+  </table></div>
+  <p class="small" style="margin-top:12px">For a specialised task, such as a full geochronology reduction or the widest range of mineral-melt calibrations, IsoplotR and Thermobar go further than PlotBench and are worth using alongside it.</p>
+</div></section>
+
+<section id="download"><div class="wrap">
+  <h2>Download</h2>
+  <p class="lead">Version 1.30.0. All files are on the <a href="https://github.com/kishangeo/PlotBench/releases/latest">Releases page</a>.</p>
+  <div class="dl">
+    <div class="card"><h3>Windows 10 / 11</h3><p>Installer. No administrator rights needed.</p><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/latest/download/PlotBench-1.30.0-Setup.exe">Download .exe</a></div>
+    <div class="card"><h3>macOS, Apple silicon</h3><p>For M1, M2, M3 and later Macs.</p><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/latest/download/PlotBench-1.30.0-macos-arm64.dmg">Download .dmg</a></div>
+    <div class="card"><h3>macOS, Intel</h3><p>For Intel-based Macs.</p><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/latest/download/PlotBench-1.30.0-macos-intel.dmg">Download .dmg</a></div>
+    <div class="card"><h3>Linux x86-64</h3><p>Unpack and run, or run <code>install.sh</code> to add a menu entry.</p><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/latest/download/PlotBench-1.30.0-linux-x86_64.tar.gz">Download .tar.gz</a></div>
+  </div>
+  <h3 style="margin-top:30px">First start</h3>
+  <ol>
+    <li><b>Windows:</b> if SmartScreen appears, click <b>More info</b>, then <b>Run anyway</b>. The installer is not code-signed.</li>
+    <li><b>macOS:</b> drag PlotBench to Applications. The first time, right-click it and choose <b>Open</b>, because the app is not notarised.</li>
+    <li><b>Linux:</b> <code>tar xzf PlotBench-*.tar.gz &amp;&amp; ./PlotBench/PlotBench</code></li>
+  </ol>
+</div></section>
+
+<section id="cite"><div class="wrap">
+  <h2>Cite and contribute</h2>
+  <p class="lead">If PlotBench helps your research, please cite it with the <b>Cite this repository</b> button on <a href="https://github.com/kishangeo/PlotBench">GitHub</a>, and cite the papers behind the diagrams and calculations you use; the app names each one. Bug reports and ideas are welcome on the <a href="https://github.com/kishangeo/PlotBench/issues">issue tracker</a>.</p>
+</div></section>
+
+<footer><div class="wrap">
+  PlotBench is developed by <a href="https://orcid.org/0000-0003-0014-914X">Kishan Tiwari</a> (kishantiwari@iitkgp.ac.in), IIT Kharagpur. Released under the MIT License.
+</div></footer>
+</body>
+</html>

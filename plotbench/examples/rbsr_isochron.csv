@@ -1,0 +1,9 @@
+# Whole-rock Rb-Sr data, 1-sigma absolute errors (synthetic, 1200 Ma, initial 0.7045). Synthetic example data for PlotBench (not measurements).
+Sample,87Rb/86Sr,87Sr/86Sr,1s 87Rb/86Sr,1s 87Sr/86Sr
+WR-1,0.15,0.707048,0.00075,2e-05
+WR-2,0.62,0.714936,0.0031,2e-05
+WR-3,1.1,0.723079,0.0055,2e-05
+WR-4,1.71,0.73338,0.00855,2e-05
+WR-5,2.36,0.744392,0.0118,2e-05
+WR-6,3.05,0.756061,0.01525,2e-05
+WR-7,3.8,0.768768,0.019,2e-05

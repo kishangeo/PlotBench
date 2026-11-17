@@ -1,0 +1,25 @@
+# Oceanic and arc basalts (Th, Nb, Yb in ppm, TiO2 in wt%) for the Pearce (2008) diagrams. Synthetic example data for PlotBench (not measurements).
+Sample,Setting,TiO2,Nb,Th,Yb
+N-M-1,N-MORB,0.78,1.43,0.096,1.84
+N-M-2,N-MORB,1.18,1.34,0.073,2.38
+N-M-3,N-MORB,1.31,3.82,0.244,3.18
+N-M-4,N-MORB,1.31,1.92,0.121,2.77
+N-M-5,N-MORB,1.79,3.03,0.179,3.06
+N-M-6,N-MORB,1.25,3.01,0.157,3.17
+E-M-1,E-MORB,1.18,11.34,0.983,3.05
+E-M-2,E-MORB,1.54,9.03,0.588,2.62
+E-M-3,E-MORB,0.77,3.69,0.33,2.02
+E-M-4,E-MORB,1.72,10.46,0.914,3.49
+E-M-5,E-MORB,0.72,8.23,0.619,1.73
+OIB-1,OIB,2.63,42.89,3.988,2.59
+OIB-2,OIB,4.56,72.42,5.487,2.4
+OIB-3,OIB,4.11,81.79,8.112,2.34
+OIB-4,OIB,3.04,47.24,4.515,2.23
+OIB-5,OIB,3.3,75.86,5.833,2.59
+OIB-6,OIB,2.27,52.18,5.217,1.62
+VOL-1,Volcanic arc,0.8,2.44,1.967,2.24
+VOL-2,Volcanic arc,0.98,2.79,2.014,2.67
+VOL-3,Volcanic arc,0.47,1.79,1.143,1.65
+VOL-4,Volcanic arc,0.72,2.73,0.902,1.56
+VOL-5,Volcanic arc,0.64,6.66,3.528,2.45
+VOL-6,Volcanic arc,1.32,9.39,3.821,3.2

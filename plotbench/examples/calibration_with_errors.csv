@@ -1,0 +1,10 @@
+# Calibration curve; the SD column is set as yErr so error bars appear. Synthetic example data for PlotBench (not measurements).
+Concentration (ppm),Absorbance,Absorbance SD
+0,0.00315727,0.00403157
+0.5,0.0254326,0.00425433
+1,0.0581404,0.0045814
+2,0.102178,0.00502178
+5,0.264924,0.00664924
+10,0.518122,0.00918122
+20,1.02755,0.0142755
+50,2.56697,0.0296697
