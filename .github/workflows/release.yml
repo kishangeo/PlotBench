@@ -42,7 +42,6 @@ jobs:
           python test_analysis.py
           python test_formats.py
           python -c "from plotbench import thermobaro, volcanic, geochron, mineral; thermobaro._demo(); volcanic._demo(); geochron._demo(); mineral._demo()"
-          python make_manual.py
       - name: Version
         id: v
         shell: bash

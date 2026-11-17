@@ -18,6 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 os.environ["APPDATA"] = tempfile.mkdtemp()  # clean settings: no recent files, light theme
+# screenshots at 2x (sharp in the manual window on high-DPI screens and in the PDF), rendered off screen with the system fonts
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen"); os.environ.setdefault("QT_SCALE_FACTOR", "2")
+if os.name == "nt": os.environ.setdefault("QT_QPA_FONTDIR", os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts"))
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -44,7 +47,7 @@ def esc(s): return html.escape(str(s))
 def shot(widget, name, width=None, caption=""):
     """Grab a widget into img/name.png; returns an <img> block."""
     widget.show(); qa.processEvents(); qa.processEvents()
-    pm = widget.grab(); pm.save(str(IMG / f"{name}.png")); SHOTS[name] = (pm.width(), pm.height())
+    pm = widget.grab(); pm.save(str(IMG / f"{name}.png")); r = pm.devicePixelRatio() or 1; SHOTS[name] = (round(pm.width() / r), round(pm.height() / r))
     return fig(name, width, caption)
 
 
@@ -167,7 +170,7 @@ for tb in w.findChildren(QToolBar):
     for i, a in enumerate(tb.actions()):
         if a.isSeparator() or not a.text(): continue
         fn = f"{abs(hash((tb.windowTitle(), a.text()))) % 10**8}.png"
-        if not a.icon().isNull(): a.icon().pixmap(24, 24).save(str(IMG / "icons" / fn))
+        if not a.icon().isNull(): a.icon().pixmap(48, 48).save(str(IMG / "icons" / fn))
         rows.append((fn if not a.icon().isNull() else None, a.text().replace("&", ""), _tip(a)))
     if rows: TOOLBARS.append((tb.windowTitle(), rows))
 
