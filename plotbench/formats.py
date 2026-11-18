@@ -72,13 +72,20 @@ def read_dataset(path, name):
 
 def datasets_to_frame(path, names):
     """Combine 1-D datasets (and columns of 2-D ones) into one DataFrame (shorter columns padded with NaN)."""
+    if not names: raise ValueError("Select at least one dataset to import.")
     cols = {}
+
+    def put(key, v, full):  # group1/SiO2 and group2/SiO2 both keep their data: the second becomes 'SiO2 (group2/SiO2)'
+        if key in cols: key = f"{key} ({full})"
+        k, i = key, 2
+        while k in cols: k = f"{key} {i}"; i += 1
+        cols[k] = v
     for n in names:
         a = np.squeeze(read_dataset(path, n)); short = n.split("/")[-1]
-        if a.ndim == 0: cols[short] = np.array([float(a)])
-        elif a.ndim == 1: cols[short] = a
+        if a.ndim == 0: put(short, np.array([float(a)]), n)
+        elif a.ndim == 1: put(short, a, n)
         elif a.ndim == 2:
-            for j in range(a.shape[1]): cols[f"{short}[{j + 1}]"] = a[:, j]
+            for j in range(a.shape[1]): put(f"{short}[{j + 1}]", a[:, j], n)
         else: raise ValueError(f"{n} has {a.ndim} dimensions; import it as a matrix (first 2-D slice) instead")
     n = max(len(v) for v in cols.values())
     return pd.DataFrame({k: np.r_[v, np.full(n - len(v), np.nan)] for k, v in cols.items()})

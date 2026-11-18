@@ -43,9 +43,10 @@ def zr_in_titanite_hayden2008(zr_ppm, p_kbar, a_tio2=1.0, a_sio2=1.0):
 def zircon_dfmq_loucks2020(ce_ppm, u_ppm, ti_ppm, age_ma=0.0):
     """Loucks, Fiorentini & Henriquez (2020): dFMQ = 3.998 log[Ce / sqrt(Ui Ti)] + 2.284, Ui = U at crystallisation
     (U e^(lambda238 t), t from the age in Ma)."""
-    ui = np.asarray(u_ppm, float) * np.exp(1.55125e-10 * np.asarray(age_ma, float) * 1e6)
+    pos = lambda a: np.where(np.asarray(a, float) > 0, np.asarray(a, float), np.nan)  # blank, zero or negative: no result, not +-inf
+    ui = pos(u_ppm) * np.exp(1.55125e-10 * np.maximum(np.asarray(age_ma, float), 0.0) * 1e6)
     with np.errstate(all="ignore"):
-        return 3.998 * np.log10(np.asarray(ce_ppm, float) / np.sqrt(ui * np.asarray(ti_ppm, float))) + 2.284
+        return 3.998 * np.log10(pos(ce_ppm) / np.sqrt(ui * pos(ti_ppm))) + 2.284
 
 
 def ti_in_quartz_wark2006(ti_ppm):
@@ -606,6 +607,66 @@ METHODS.update({
         "eq": "T(K) = (23166 + 39.28 P) / [13.25 + 15.35 Ti + 4.50 Fe - 1.55 (Al + Cr - Na) + (ln a_en)^2], a_en = (1 - Ca - Na)(1 - (Al + Cr + Na)/2)",
         "ref": "Nimis & Taylor (2000) Contrib Mineral Petrol 139, 541-554", "note": "Peridotite clinopyroxene coexisting with orthopyroxene; +-30 C. " + _VNOTE},
 })
+
+
+# Calibration domains stated by the authors (or in the method notes): the result, and numeric inputs such as P, outside these
+# ranges are flagged. Equilibrium tests use the accepted equilibrium window instead. Methods not listed have no recorded range.
+VALID = {
+    "Ti-in-zircon (Ferry & Watson 2007)": {"out": (580, 1070), "ref": "experiments and natural zircon, 580-1070 C"},
+    "Ti-in-quartz (Wark & Watson 2006)": {"out": (600, 1000), "ref": "experiments at 600-1000 C, 10 kbar"},
+    "Ti-in-quartz (Thomas et al. 2010)": {"out": (700, 940), "P (kbar)": (5, 20), "ref": "experiments at 700-940 C, 5-20 kbar"},
+    "Zr-in-titanite (Hayden et al. 2008)": {"out": (800, 1000), "P (kbar)": (10, 24), "ref": "experiments at 800-1000 C, 1-2.4 GPa"},
+    "Zircon saturation (Watson & Harrison 1983)": {"out": (750, 1020), "ref": "experiments at 750-1020 C, M = 0.9-1.7"},
+    "Garnet-biotite Fe-Mg (Ferry & Spear 1978)": {"out": (550, 800), "ref": "experiments at 550-800 C, 2.07 kbar"},
+    "Amphibole-plagioclase A, edenite-tremolite (Holland & Blundy 1994)": {"out": (400, 1000), "P (kbar)": (1, 15), "ref": "400-1000 C, 1-15 kbar"},
+    "Amphibole-plagioclase B, edenite-richterite (Holland & Blundy 1994)": {"out": (400, 1000), "P (kbar)": (1, 15), "ref": "400-1000 C, 1-15 kbar"},
+    "Two-pyroxene (Brey & Kohler 1990)": {"out": (900, 1400), "P (kbar)": (10, 60), "ref": "experiments at 900-1400 C, 10-60 kbar"},
+    "Ca-in-orthopyroxene (Brey & Kohler 1990)": {"out": (900, 1400), "P (kbar)": (10, 60), "ref": "experiments at 900-1400 C, 10-60 kbar"},
+    "Garnet-orthopyroxene Al (Brey & Kohler 1990, PBKN)": {"out": (10, 60), "T (C), if no column": (900, 1400), "ref": "experiments at 900-1400 C, 10-60 kbar"},
+    "Al-in-hornblende (Schmidt 1992)": {"out": (2.5, 13), "ref": "experiments at 2.5-13 kbar"},
+    "Al-in-hornblende (Mutch et al. 2016)": {"out": (0.8, 10), "ref": "experiments at 0.8-10 kbar"},
+    "Al-in-hornblende (Johnson & Rutherford 1989)": {"out": (2, 8), "ref": "experiments at 2-8 kbar"},
+    "Olivine-liquid KD(Fe-Mg) equilibrium test": {"out": (0.27, 0.33), "ref": "equilibrium KD 0.30 +- 0.03 (Roeder & Emslie 1970)", "kind": "equilibrium"},
+    "Clinopyroxene-liquid KD(Fe-Mg) equilibrium test": {"out": (0.20, 0.36), "ref": "equilibrium KD 0.28 +- 0.08 (Putirka 2008)", "kind": "equilibrium"},
+}
+
+
+def in_range(method, values, inputs, n_rows):
+    """Per row: 1.0 inside the method's calibration domain (or equilibrium window), 0.0 outside, NaN when there is no result or no
+    recorded range. inputs: the numbers / per-row arrays given to the method (e.g. P)."""
+    rng = VALID.get(method); vals = np.asarray(values, float)
+    if rng is None: return np.full(len(vals), np.nan)
+    ok = np.isfinite(vals) & (vals >= rng["out"][0]) & (vals <= rng["out"][1])
+    for label, (lo, hi) in ((k, v) for k, v in rng.items() if isinstance(v, tuple) and k != "out"):
+        x = inputs.get(label)
+        if isinstance(x, (int, float, np.ndarray, list)): x = np.broadcast_to(np.asarray(x, float), vals.shape); ok &= (x >= lo) & (x <= hi)
+    return np.where(np.isfinite(vals), ok.astype(float), np.nan)
+
+
+def monte_carlo(method, columns, sheet_arr, sheet_oxides, n_rows=None, rel=0.02, n=500, num_sd=None, seed=1):
+    """Standard deviation (per row) of a method's result when every measured input (columns, oxide analyses) carries a relative
+    1-sigma error rel (0.02 = 2 %), drawn n times independently; num_sd: {numeric input: absolute 1-sigma}, e.g. {"P (kbar)": 1}.
+    Inputs are perturbed independently (no covariance between oxides or phases), so this is a first estimate of the analytical part
+    of the uncertainty; the calibration error of the equation (in the method notes) comes on top."""
+    rs = np.random.default_rng(seed); num_sd = num_sd or {}; out = []
+    base_ox = {}
+
+    def noisy(a): a = np.asarray(a, float); return a * (1 + rel * rs.standard_normal(a.shape))
+    for _ in range(int(n)):
+        arr = lambda c: noisy(sheet_arr(c))
+
+        def ox(prefix=False):
+            key = repr(prefix)
+            if key not in base_ox: base_ox[key] = sheet_oxides(prefix)
+            return {k: noisy(v) for k, v in base_ox[key].items()}
+        cols = dict(columns)
+        for label, sd in num_sd.items():
+            if sd and label in cols and isinstance(cols[label], (int, float)) and not isinstance(cols[label], bool):
+                cols[label] = cols[label] + sd * rs.standard_normal(n_rows or 1)
+        with np.errstate(all="ignore"): out.append(np.asarray(compute(method, cols, arr, ox, n_rows), float))
+    out = np.array(out)
+    with np.errstate(all="ignore"), __import__("warnings").catch_warnings():
+        __import__("warnings").simplefilter("ignore"); return np.nanstd(out, axis=0, ddof=1)
 
 
 def coupled_pairs():

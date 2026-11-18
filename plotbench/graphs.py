@@ -382,10 +382,10 @@ def _shortcut_panel(g):
         body = QWidget(); body.setVisible(h.isChecked())
 
         def flip(on, t=title):
-            body.setVisible(on); h.setIcon(QIcon(ar["down" if on else "right"]))
+            body.setVisible(on); h.setIcon(QIcon(arrows(getattr(g.main, "_theme", None) or "light")["down" if on else "right"]))
             if settings is not None:
                 f = set(settings.get("panel_collapsed", [])); (f.discard(t) if on else f.add(t)); settings["panel_collapsed"] = sorted(f)
-        h.toggled.connect(flip); outer.addWidget(h); outer.addWidget(body); return body
+        h.toggled.connect(flip); h.setProperty("fold_header", True); outer.addWidget(h); outer.addWidget(body); return body
     g._curve_box = QVBoxLayout(section("Curves")); g._curve_box.setContentsMargins(4, 0, 0, 0); g._curve_box.setSpacing(0)
     grid = None; last = None; row = col = 0
     for group, label, fn in GRAPH_SHORTCUTS:

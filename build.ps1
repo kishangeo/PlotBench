@@ -19,6 +19,7 @@ Set-Location $PSScriptRoot
 .\.venv\Scripts\python -c "from plotbench import fetioxide; fetioxide._demo()"; if ($LASTEXITCODE) { throw "Build step failed: fetioxide" }
 .\.venv\Scripts\python -c "from plotbench import volcanic; volcanic._demo()"; if ($LASTEXITCODE) { throw "Build step failed: volcanic" }
 .\.venv\Scripts\python -c "from plotbench import geochron; geochron._demo()"; if ($LASTEXITCODE) { throw "Build step failed: -c 'from plotbench import geochron; geochron._demo()'" }
+.\.venv\Scripts\python -m unittest discover -s tests; if ($LASTEXITCODE) { throw "Build step failed: regression tests" }
 .\.venv\Scripts\python make_examples.py; if ($LASTEXITCODE) { throw "Build step failed: make_examples.py" }
 .\.venv\Scripts\python make_manual.py; if ($LASTEXITCODE) { throw "Build step failed: make_manual.py" }
 .\.venv\Scripts\python -c "from plotbench import examples; examples._demo()"; if ($LASTEXITCODE) { throw "Build step failed: -c 'from plotbench import examples; examples._demo()'" }

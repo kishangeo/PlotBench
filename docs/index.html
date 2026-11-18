@@ -7,15 +7,16 @@
 <meta name="description" content="Free desktop app for scientific graphing, peak fitting, petrology, thermobarometry and geochronology. Windows, macOS and Linux.">
 <meta name="author" content="Kishan Tiwari">
 <link rel="icon" href="img/logo.png">
+<link rel="canonical" href="https://plotbench.vercel.app/">
 <meta property="og:title" content="PlotBench">
 <meta property="og:description" content="From microprobe data to publication figures, in one free app.">
-<meta property="og:image" content="https://kishangeo.github.io/PlotBench/img/window.png">
+<meta property="og:image" content="https://plotbench.vercel.app/img/window.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#fbfcfd;--panel:#fff;--text:#14181d;--muted:#5b6470;--border:#e3e7ec;--accent:#1f8f86;--accent2:#15736b;--tint:#eaf5f4;--shadow:0 30px 80px -20px rgba(16,40,60,.28),0 8px 24px -8px rgba(16,40,60,.12)}
-@media (prefers-color-scheme:dark){:root{--bg:#0f1113;--panel:#181b1f;--text:#eceef0;--muted:#a3abb4;--border:#2a2f35;--accent:#34b8ab;--accent2:#5fd0c4;--tint:#15282a;--shadow:0 30px 80px -20px rgba(0,0,0,.7)}}
+:root{--bg:#fbfcfd;--panel:#fff;--text:#14181d;--muted:#5b6470;--border:#e3e7ec;--accent:#1f8f86;--accent2:#15736b;--tint:#eaf5f4;--shadow:0 30px 80px -20px rgba(16,40,60,.28),0 8px 24px -8px rgba(16,40,60,.12);--on-accent:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1113;--panel:#181b1f;--text:#eceef0;--muted:#a3abb4;--border:#2a2f35;--accent:#34b8ab;--accent2:#5fd0c4;--tint:#15282a;--shadow:0 30px 80px -20px rgba(0,0,0,.7);--on-accent:#06201d}}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 Inter,"Segoe UI",system-ui,-apple-system,Arial,sans-serif;-webkit-font-smoothing:antialiased}
@@ -29,8 +30,8 @@ header b{font-size:18px;letter-spacing:-.01em}
 nav{margin-left:auto;display:flex;gap:26px;align-items:center}
 nav a{color:var(--muted);font-size:15px;font-weight:500}
 nav a:hover{color:var(--text);text-decoration:none}
-nav .cta{background:var(--accent);color:#fff;padding:8px 16px;border-radius:999px}
-nav .cta:hover{background:var(--accent2);color:#fff}
+nav .cta{background:var(--accent);color:var(--on-accent);padding:8px 16px;border-radius:999px}
+nav .cta:hover{background:var(--accent2);color:var(--on-accent)}
 .hero{position:relative;padding:84px 0 0;text-align:center;overflow:hidden}
 .hero:before{content:"";position:absolute;inset:-200px -20% auto;height:720px;background:radial-gradient(closest-side,color-mix(in srgb,var(--accent) 22%,transparent),transparent);z-index:-1}
 .pill{display:inline-flex;gap:8px;align-items:center;font-size:13.5px;font-weight:600;color:var(--accent);background:var(--tint);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);padding:5px 14px;border-radius:999px;margin-bottom:22px}
@@ -38,7 +39,7 @@ nav .cta:hover{background:var(--accent2);color:#fff}
 .hero h1 span{background:linear-gradient(90deg,var(--accent),#3a7bd5);-webkit-background-clip:text;background-clip:text;color:transparent}
 .hero p.sub{font-size:clamp(17px,2vw,20px);color:var(--muted);max-width:720px;margin:0 auto 32px}
 .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.btn{display:inline-flex;align-items:center;gap:8px;padding:13px 24px;border-radius:12px;background:var(--accent);color:#fff;font-weight:600;font-size:15.5px;box-shadow:0 8px 20px -8px color-mix(in srgb,var(--accent) 70%,transparent);transition:transform .15s,background .15s}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:13px 24px;border-radius:12px;background:var(--accent);color:var(--on-accent);font-weight:600;font-size:15.5px;box-shadow:0 8px 20px -8px color-mix(in srgb,var(--accent) 70%,transparent);transition:transform .15s,background .15s}
 .btn:hover{background:var(--accent2);text-decoration:none;transform:translateY(-1px)}
 .btn.ghost{background:var(--panel);color:var(--text);border:1px solid var(--border);box-shadow:none}
 .btn svg{width:18px;height:18px}
@@ -92,6 +93,10 @@ code{background:var(--tint);padding:2px 7px;border-radius:6px;font-size:13.5px;f
 .cite{display:grid;grid-template-columns:1.4fr 1fr;gap:24px;align-items:center}
 footer{padding:36px 0 48px;color:var(--muted);font-size:14px;border-top:1px solid var(--border)}
 footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
+.skip{position:absolute;left:-999px;top:8px;z-index:20;background:var(--accent);color:var(--on-accent);padding:8px 14px;border-radius:8px}
+.skip:focus{left:12px}
+a:focus-visible,.btn:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}.card:hover,.gallery figure:hover,.btn:hover{transform:none}}
 @media (max-width:980px){.grid,.dl{grid-template-columns:repeat(2,1fr)}.gallery{grid-template-columns:repeat(2,1fr)}.cite{grid-template-columns:1fr}}
 @media (max-width:640px){nav a:not(.cta){display:none}.grid,.dl,.steps{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.stats div:nth-child(2){border-right:none}.stats div:nth-child(-n+2){border-bottom:1px solid var(--border)}section{padding:68px 0}.hero{padding-top:56px}.frame .bar span{display:none}}
 </style>
@@ -99,13 +104,15 @@ footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
 <meta name="google-site-verification" content="L25p3KfmoKL6BcGNV8zN67EQ0H8uU5PE5-fLvBq-n94" />
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header><div class="wrap">
   <img src="img/logo.png" alt=""><b>PlotBench</b>
   <nav><a href="#features">Features</a><a href="#gallery">Gallery</a><a href="#compare">Compare</a><a href="https://github.com/kishangeo/PlotBench">GitHub</a><a class="cta" href="#download">Download</a></nav>
 </div></header>
 
+<main id="main">
 <div class="hero"><div class="wrap">
-  <div class="pill">Version 1.30 · Free and open source</div>
+  <div class="pill">Version 1.30.1 · Free and open source</div>
   <h1>From microprobe data to <span>publication figures</span>, in one app</h1>
   <p class="sub">PlotBench brings scientific graphing and peak fitting together with petrology, mineral chemistry, thermobarometry and U-Pb geochronology. No coding, and no Python or R to install.</p>
   <div class="btns">
@@ -138,7 +145,7 @@ footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
     <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V4M4 20h16M8 16l4-5 3 3 5-7"/></svg></div><h3>Graphing</h3><p>83 plot types, journal-sized export to PNG, TIFF, PDF, SVG and EPS with a true-size preview, and multi-panel figures with (a), (b), (c) labels.</p></div>
     <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 16H3z"/><path d="M7.5 11h9M12 3v16"/></svg></div><h3>Geochemistry</h3><p>TAS, AFM, Harker, Frost and Shand diagrams, Pearce granite and basalt discrimination, spider diagrams, ternary plots and the CIPW norm.</p></div>
     <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l8 5v10l-8 5-8-5V7z"/><path d="M12 12l8-5M12 12v10M12 12L4 7"/></svg></div><h3>Mineral chemistry</h3><p>Mineral formulae from oxide wt%, Fe<sup>3+</sup> by charge balance (Droop 1987), and amphibole, pyroxene and feldspar classification.</p></div>
-    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 14.8V4a2 2 0 10-4 0v10.8a4 4 0 104 0z"/><path d="M12 9v6"/></svg></div><h3>Thermobarometry</h3><p>45 methods including Putirka (2008), Holland &amp; Blundy (1994), Ti-in-zircon, Ti-in-quartz, Ghiorso &amp; Evans (2008) Fe-Ti oxides and the Loucks et al. (2020) zircon oxybarometer, plus a coupled P-T solver.</p></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 14.8V4a2 2 0 10-4 0v10.8a4 4 0 104 0z"/><path d="M12 9v6"/></svg></div><h3>Thermobarometry</h3><p>45 methods including Putirka (2008), Holland &amp; Blundy (1994), Ti-in-zircon, Ti-in-quartz, Ghiorso &amp; Evans (2008) Fe-Ti oxides and the Loucks et al. (2020) zircon oxybarometer, plus a coupled P-T solver. Rows outside a method's calibration range are flagged, and a Monte Carlo option gives 1σ uncertainties.</p></div>
     <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h3>Geochronology</h3><p>Wetherill and Tera-Wasserburg concordia, concordia and weighted-mean ages, York isochrons, common-Pb correction, discordance filtering, and detrital KDE.</p></div>
     <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 18c3 0 4-12 6-12s3 9 5 9 2-5 4-5 2 8 5 8"/></svg></div><h3>Spectra and fitting</h3><p>A Peak Analyzer for Raman, FTIR and XRD with baselines and Gaussian, Lorentzian, pseudo-Voigt and Voigt peaks; 47 nonlinear fit models.</p></div>
     <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 20V10M12 20V4M18 20v-7"/></svg></div><h3>Statistics</h3><p>t-tests, ANOVA and post-hoc tests, non-parametric tests, PCA, clustering, discriminant analysis, regression and mixed models.</p></div>
@@ -184,17 +191,17 @@ footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
 
 <section id="download" class="alt"><div class="wrap">
   <div class="eyebrow">Download</div>
-  <h2>Get PlotBench 1.30</h2>
+  <h2>Get PlotBench 1.30.1</h2>
   <p class="lead">Free for everyone, under the MIT License. Older versions are on the <a href="https://github.com/kishangeo/PlotBench/releases">Releases page</a>.</p>
   <div class="dl">
-    <div class="card"><h3>Windows</h3><span class="os">Windows 10 and 11 · 64-bit installer</span><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/latest/download/PlotBench-1.30.0-Setup.exe">Download .exe</a></div>
-    <div class="card"><h3>macOS</h3><span class="os">Apple silicon (M1 and later)</span><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/latest/download/PlotBench-1.30.0-macos-arm64.dmg">Download .dmg</a></div>
-    <div class="card"><h3>macOS</h3><span class="os">Intel Macs</span><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/latest/download/PlotBench-1.30.0-macos-intel.dmg">Download .dmg</a></div>
-    <div class="card"><h3>Linux</h3><span class="os">x86-64 · tar.gz</span><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/latest/download/PlotBench-1.30.0-linux-x86_64.tar.gz">Download .tar.gz</a></div>
+    <div class="card"><h3>Windows</h3><span class="os">Windows 10 and 11 · 64-bit installer</span><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/download/v1.30.1/PlotBench-1.30.1-Setup.exe">Download .exe</a></div>
+    <div class="card"><h3>macOS</h3><span class="os">Apple silicon (M1 and later)</span><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/download/v1.30.1/PlotBench-1.30.1-macos-arm64.dmg">Download .dmg</a></div>
+    <div class="card"><h3>macOS</h3><span class="os">Intel Macs</span><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/download/v1.30.1/PlotBench-1.30.1-macos-intel.dmg">Download .dmg</a></div>
+    <div class="card"><h3>Linux</h3><span class="os">x86-64 · tar.gz</span><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/download/v1.30.1/PlotBench-1.30.1-linux-x86_64.tar.gz">Download .tar.gz</a></div>
   </div>
   <div class="steps">
-    <div><b>Windows.</b> If SmartScreen appears, click More info, then Run anyway. No administrator rights are needed.</div>
-    <div><b>macOS.</b> Drag PlotBench to Applications. The first time, right-click it and choose Open.</div>
+    <div><b>Windows.</b> The installer is not code-signed, so SmartScreen may warn you. Download only from this page or the GitHub Releases page, and check the file against the SHA-256 checksum shown there before running it. No administrator rights are needed.</div>
+    <div><b>macOS.</b> The app is not notarised by Apple. Drag it to Applications and open it; when macOS says it could not verify PlotBench, click Done, then go to System Settings &gt; Privacy &amp; Security and click <b>Open Anyway</b>. Details are in README-FIRST on the disk image.</div>
     <div><b>Linux.</b> Unpack and run <code>./PlotBench</code>, or <code>./install.sh</code> for a menu entry.</div>
   </div>
 </div></section>
@@ -203,13 +210,15 @@ footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
   <div>
     <div class="eyebrow">Cite and contribute</div>
     <h2>Using PlotBench in a paper?</h2>
-    <p class="lead" style="margin-bottom:0">Please cite it with the <b>Cite this repository</b> button on GitHub, and cite the papers behind the diagrams and calculations you use; the app names each one. Bug reports and ideas are welcome.</p>
+    <p class="lead" style="margin-bottom:0">Please cite it with the <b>Cite this repository</b> button on GitHub, and cite the papers behind the diagrams and calculations you use; the app names each one. Bug reports and ideas are welcome. The <a href="https://github.com/kishangeo/PlotBench/blob/main/VALIDATION.md">validation table</a> shows the benchmarks against published values, and the <a href="https://github.com/kishangeo/PlotBench/blob/main/CHANGELOG.md">changelog</a> lists what changed in each version.</p>
   </div>
   <div class="btns" style="justify-content:flex-start">
     <a class="btn" href="https://github.com/kishangeo/PlotBench">Cite on GitHub</a>
     <a class="btn ghost" href="https://github.com/kishangeo/PlotBench/issues">Report an issue</a>
   </div>
 </div></section>
+
+</main>
 
 <footer><div class="wrap">
   <span>© 2026 <a href="https://orcid.org/0000-0003-0014-914X">Kishan Tiwari</a>, IIT Kharagpur · kishantiwari@iitkgp.ac.in</span>

@@ -7,3 +7,4 @@ __pycache__/
 Papers/
 *.log
 .claude/
+PlotBench-review.md

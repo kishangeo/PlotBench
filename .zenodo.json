@@ -1,0 +1,10 @@
+{
+  "title": "PlotBench: a desktop workbench for scientific graphing, petrology, thermobarometry and geochronology",
+  "upload_type": "software",
+  "description": "PlotBench is a free, open-source desktop application that combines scientific graphing and peak fitting with geochemical diagrams, mineral chemistry, thermobarometry and U-Pb geochronology, without coding. Windows, macOS and Linux installers are attached to each GitHub release. Website: https://plotbench.vercel.app/",
+  "creators": [
+    {"name": "Tiwari, Kishan", "affiliation": "Indian Institute of Technology Kharagpur", "orcid": "0000-0003-0014-914X"}
+  ],
+  "license": "MIT",
+  "keywords": ["petrology", "geochemistry", "thermobarometry", "geochronology", "U-Pb", "plotting", "peak fitting", "mineral chemistry"]
+}

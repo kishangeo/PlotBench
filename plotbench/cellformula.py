@@ -63,6 +63,16 @@ def _round(x, n=0, how=round):
     f = 10 ** int(n); return how(float(x) * f) / f
 
 
+def _fact(x):
+    """x! as a float; 171! and up overflow a float, so they are refused before the (slow) exact integer product."""
+    if not np.isfinite(x) or x < 0: raise CellError("#NUM!")
+    if x > 170: raise CellError("#NUM!")
+    return float(math.factorial(int(x)))
+
+
+MAX_FORMULA = 2000  # characters in one cell formula
+
+
 def _if(cond, a=True, b=False): return a if cond else b
 
 
@@ -197,7 +207,7 @@ FUNCS = {
     "POWER": lambda x, y: float(x) ** float(y), "MOD": lambda x, y: float(x) - float(y) * math.floor(float(x) / float(y)),
     "INT": lambda x: float(math.floor(x)), "TRUNC": lambda x, n=0: _round(x, n, math.trunc), "ROUND": lambda x, n=0: _round(x, n),
     "ROUNDUP": lambda x, n=0: _round(x, n, lambda v: math.ceil(v) if v > 0 else math.floor(v)),
-    "ROUNDDOWN": lambda x, n=0: _round(x, n, math.trunc), "SIGN": lambda x: float(np.sign(x)), "FACT": lambda x: float(math.factorial(int(x))),
+    "ROUNDDOWN": lambda x, n=0: _round(x, n, math.trunc), "SIGN": lambda x: float(np.sign(x)), "FACT": _fact,
     "PI": lambda: math.pi, "SIN": math.sin, "COS": math.cos, "TAN": math.tan, "ASIN": math.asin, "ACOS": math.acos, "ATAN": math.atan,
     "ATAN2": lambda x, y: math.atan2(y, x), "SINH": math.sinh, "COSH": math.cosh, "TANH": math.tanh,
     "DEGREES": math.degrees, "RADIANS": math.radians,
@@ -346,6 +356,7 @@ class _Lazy(ast.NodeTransformer):
 
 
 def compile_cell(text):
+    if len(str(text)) > MAX_FORMULA: raise CellError("#VALUE!")
     src = translate(text)
     try: tree = ast.parse(src, mode="eval")
     except SyntaxError: raise CellError("#VALUE!") from None

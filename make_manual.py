@@ -270,7 +270,7 @@ def references():
         "<li><b>Ultramafic rocks</b>: Le Maitre, R.W. (ed.) (2002). Igneous Rocks: A Classification and Glossary of Terms, 2nd ed. Cambridge University Press.</li>" \
         "<li><b>Fe3+ estimation</b>: Droop, G.T.R. (1987). A general equation for estimating Fe3+ concentrations in ferromagnesian silicates and oxides " \
         "from microprobe analyses, using stoichiometric criteria. Mineralogical Magazine 51, 431-435.</li><li><b>Soil texture</b>: Soil Science Division Staff (2017). Soil Survey Manual. USDA Handbook 18.</li><li>Field polygons and reference compositions as compiled " \
-        "in pyrolite (Williams et al. 2020, Journal of Open Source Software 5, 2314), BSD-3 licence.</li></ul>"
+        "in pyrolite (Williams et al. 2020, Journal of Open Source Software 5, 2314), MIT License.</li></ul>"
 
 
 # ------------------------------------------------------------------ the manual text
@@ -775,6 +775,15 @@ diagrams are not included either, because the boundaries in the scanned figure c
 (Ctrl+= and Ctrl+-) or the Zoom tool (drag a rectangle). <b>Reset view</b> (Ctrl+0, the corner-arrows button) shows the whole graph again;
 Back and Forward step through earlier views. Log axes zoom in log space. The panel to the right of a wide graph has a <b>Curves</b> section
 (untick a curve to hide it) and folding groups of shortcuts; click a heading to fold it. <b>View &gt; Graph Side Panel</b> hides the panel.</p>
+<h3>New in 1.30.1: calibration ranges, uncertainties and validation</h3>
+<p>Thermobarometry results now come with checks. A method whose authors state a calibration domain (for example Ti-in-zircon,
+580&ndash;1070 &deg;C; Ti-in-quartz of Thomas et al. 2010, 700&ndash;940 &deg;C and 5&ndash;20 kbar) adds a column saying, for each row, whether the
+result and the pressure given lie inside it; the olivine- and clinopyroxene-liquid K<sub>D</sub> tests add an <i>in equilibrium</i> column. Tick
+<b>Monte Carlo uncertainty</b> in the Thermobarometry dialog for a 1&sigma; column: every measured value is varied by the relative error you
+give (and P by its absolute error), independently, and the method rerun a few hundred times. This is the analytical part of the uncertainty;
+the calibration error of the equation, given in the method notes, comes on top. The file <code>VALIDATION.md</code> in the source lists the
+benchmarks against published worked examples and experiments. Opening a project is now all or nothing: if the new project cannot be built,
+your previous windows come back unchanged.</p>
 <h3>New in 1.30</h3>
 <p><b>File &gt; Export Worksheet as LaTeX Table (booktabs)</b> writes the sheet as a <code>booktabs</code> table, with formulae in column names
 typeset (SiO<sub>2</sub>, Fe<sup>3+</sup>, <sup>206</sup>Pb/<sup>238</sup>U) and numbers to four significant figures. The common-Pb correction now

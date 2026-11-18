@@ -8,7 +8,25 @@ on:
 permissions:
   contents: write
 jobs:
+  test:  # the full test set once; no installer is built or published unless it passes
+    runs-on: ubuntu-22.04
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libegl1 libgl1 libfontconfig1 libdbus-1-3
+      - run: pip install -r requirements.txt
+      - name: Analysis and format checks
+        run: for t in test_analysis.py test_analysis2.py test_analysis3.py test_analysis4.py test_analysis5.py test_analysis6.py test_analysis7.py test_analysis8.py test_formats.py; do python "$t"; done
+      - name: Module self-checks
+        run: python -c "from plotbench import thermobaro, volcanic, geochron, mineral, norm, fetioxide, cellformula as c; [m._demo() for m in (thermobaro, volcanic, geochron, mineral, norm, fetioxide, c)]"
+      - name: Regression tests
+        run: python -m unittest discover -s tests -v
   build:
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -65,7 +83,11 @@ jobs:
             --hidden-import matplotlib.backends.backend_pdf --hidden-import matplotlib.backends.backend_ps --hidden-import matplotlib.backends.backend_svg \
             --hidden-import PIL.TiffImagePlugin --hidden-import pywt --hidden-import h5py --hidden-import xlrd --hidden-import scipy.odr \
             --exclude-module tkinter run_plotbench.py
-          mkdir dmg && cp -R dist/PlotBench.app dmg/ && ln -s /Applications dmg/Applications
+          # ad-hoc signature (free; not Apple notarisation): Apple silicon refuses unsigned code, and the bundle's seal is consistent
+          codesign --force --deep --sign - dist/PlotBench.app
+          codesign --verify --deep dist/PlotBench.app || echo "::warning::ad-hoc signature did not verify"
+          cp packaging/macos/README-FIRST.txt dist/
+          mkdir dmg && cp -R dist/PlotBench.app dmg/ && cp dist/README-FIRST.txt dmg/ && ln -s /Applications dmg/Applications
           hdiutil create -volname PlotBench -srcfolder dmg -ov -format UDZO "dist/PlotBench-${{ steps.v.outputs.ver }}-${{ matrix.target }}.dmg"
       - name: Build (Linux)
         if: runner.os == 'Linux'

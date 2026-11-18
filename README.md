@@ -7,7 +7,7 @@
 PlotBench takes you from a spreadsheet of analyses (EPMA, LA-ICP-MS, XRF, isotope ratios, Raman or XRD spectra) to
 publication-ready figures without writing code. It runs on Windows, macOS and Linux and needs no Python, R or MATLAB installation.
 
-**Website:** https://kishangeo.github.io/PlotBench/ &nbsp;·&nbsp; **Download:** [latest release](https://github.com/kishangeo/PlotBench/releases/latest)
+**Website:** https://plotbench.vercel.app/ &nbsp;·&nbsp; **Download:** [latest release](https://github.com/kishangeo/PlotBench/releases/latest)
 
 ![PlotBench main window](docs/img/window.png)
 
@@ -35,8 +35,12 @@ A user manual with screenshots is built in (Help > User Manual, F1), and 27 exam
 
 All files are on the [Releases page](https://github.com/kishangeo/PlotBench/releases/latest).
 
-The macOS and Windows builds are not code-signed. On macOS, right-click PlotBench and choose **Open** the first time. On Windows, if SmartScreen
-appears, click **More info > Run anyway**.
+The Windows and macOS builds are not code-signed or notarised. Download them only from the Releases page, and compare the file with the
+SHA-256 checksum shown there.
+
+- **macOS:** the first time, macOS says it "could not verify" PlotBench. Click **Done**, open **System Settings > Privacy & Security**, and click
+  **Open Anyway** next to the PlotBench message. Or run `xattr -dr com.apple.quarantine /Applications/PlotBench.app` once in Terminal.
+- **Windows:** SmartScreen may warn about an unrecognised app; choose **More info** to see the publisher and file before deciding to run it.
 
 ## Run from source
 
@@ -50,7 +54,9 @@ python -m venv .venv
 .venv/bin/python run_plotbench.py                # Windows: .venv\Scripts\python run_plotbench.py
 ```
 
-The `test_*.py` scripts check the calculations against published values; `build.ps1` builds the Windows installer.
+The `test_*.py` scripts and `python -m unittest discover -s tests` check the program; `python validation/validate.py` benchmarks the
+thermobarometry against published worked examples and experiments and writes [VALIDATION.md](VALIDATION.md). `build.ps1` builds the
+Windows installer.
 
 ## Citing PlotBench
 

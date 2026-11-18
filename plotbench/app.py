@@ -47,7 +47,7 @@ from .graphs import (GraphWindow, StyleDialog, LayoutWindow, LayoutDialog, save_
                      set_default_theme, user_dir)
 
 APP = "PlotBench"
-VERSION = "1.30.0"
+VERSION = "1.30.1"
 
 
 class ReportWindow(QTextEdit):
@@ -146,10 +146,56 @@ def save_settings(st):
 
 
 def _num_or_text(v):
-    """'1.5' -> 1.5; text that would change as a number ('001', '1e3') stays text."""
+    """'1.5' -> 1.5; text that would change as a number ('001', '1e3') stays text, and so do 'nan', 'inf' and the like."""
     try: f = float(v)
     except ValueError: return v
+    if not np.isfinite(f): return v
     return f if repr(f) == v or f"{f:.17g}" == v else v
+
+
+PROJECT_LIMITS = dict(total=4 * 2**30, meta=16 * 2**20, members=10000)  # uncompressed bytes, project.json bytes, parts
+
+
+def read_project(fn):
+    """Open a .pbp project and decode all of it: (meta, {csv name: DataFrame}, {npy name: array}). Raises ValueError for a damaged
+    or oversized file before the caller touches the open windows. Text columns keep labels such as NA or NULL as text."""
+    import io as _io
+    with zipfile.ZipFile(fn) as z:
+        info = z.infolist(); names = [i.filename for i in info]
+        if len(info) > PROJECT_LIMITS["members"]: raise ValueError("Project file has too many parts.")
+        if len(set(names)) != len(names): raise ValueError("Project file is damaged (duplicate parts).")
+        if sum(i.file_size for i in info) > PROJECT_LIMITS["total"]: raise ValueError("Project file is too large to open (over 4 GB of data).")
+        if "project.json" not in names: raise ValueError("Not a PlotBench project file.")
+        if z.getinfo("project.json").file_size > PROJECT_LIMITS["meta"]: raise ValueError("Project file is damaged (project.json too large).")
+        try: meta = json.loads(z.read("project.json"))
+        except (ValueError, UnicodeDecodeError) as e: raise ValueError(f"Project file is damaged ({e}).") from None
+        if not isinstance(meta, dict) or not isinstance(meta.get("windows"), list) or \
+                not all(isinstance(w, dict) and "kind" in w and "name" in w for w in meta["windows"]):
+            raise ValueError("Not a PlotBench project file.")
+        frames, arrays = {}, {}
+        try:
+            for st in meta["windows"]:
+                if st["kind"] == "book":
+                    for sst in st.get("sheets") or [{**st, "name": "Sheet1"}]:
+                        n = sst["csv"]
+                        if n not in names: raise ValueError(f"Project file is damaged (missing {n}).")
+                        tc = [c for c in sst.get("text_cols", [])]; text = z.read(n).decode()
+                        if tc:  # text columns: only a blank cell is missing, so labels like NA, NULL or nan stay text
+                            df = pd.read_csv(StringIO(text), dtype={c: str for c in tc}, keep_default_na=False, na_values={c: [""] for c in tc})
+                            for c in df.columns:
+                                if c not in tc and df[c].dtype == object: df[c] = pd.read_csv(StringIO(text), usecols=[c])[c]
+                            for c in tc:  # plain numbers back to floats, any other text kept exactly
+                                if c in df.columns: df[c] = df[c].map(lambda v: _num_or_text(v) if isinstance(v, str) else v).astype(object)
+                        else: df = pd.read_csv(StringIO(text))
+                        frames[n] = df
+                elif st["kind"] == "matrix":
+                    for sst in st["sheets"]:
+                        n = sst["npy"]
+                        if n not in names: raise ValueError(f"Project file is damaged (missing {n}).")
+                        arrays[n] = np.load(_io.BytesIO(z.read(n)), allow_pickle=False); sst["extent"]
+        except ValueError: raise
+        except Exception as e: raise ValueError(f"Project file is damaged ({type(e).__name__}: {e}).") from None
+    return meta, frames, arrays
 
 
 class Main(QMainWindow):
@@ -227,14 +273,19 @@ class Main(QMainWindow):
             self.mark_dirty()
         return False
 
+    def confirm_discard(self, action="closing"):
+        """Save / Discard / Cancel when there is unsaved work. True means go ahead (saved or discarded)."""
+        if not (self.dirty and self.windows()): return True
+        r = QMessageBox.question(self, APP, f"Save changes to the project before {action}?",
+                                 QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
+        if r == QMessageBox.Cancel: return False
+        if r == QMessageBox.Save:
+            self.safe(self.save_project)
+            return not self.dirty  # save was cancelled or failed: keep the work
+        return True
+
     def closeEvent(self, ev):
-        if self.dirty and self.windows():
-            r = QMessageBox.question(self, APP, "Save changes to the project before closing?",
-                                     QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
-            if r == QMessageBox.Cancel: return ev.ignore()
-            if r == QMessageBox.Save:
-                self.safe(self.save_project)
-                if self.dirty: return ev.ignore()  # save was cancelled or failed
+        if not self.confirm_discard("closing"): return ev.ignore()
         self._bulk_close = True; ev.accept()
 
     def dragEnterEvent(self, ev):
@@ -900,12 +951,29 @@ class Main(QMainWindow):
             if not fn: return
         esc = lambda t: re.sub(r"([&%#_$])", r"\\\1", str(t))
 
+        el = r"(?:[A-Z][a-z]?)"
         def chem(t):
-            t = esc(t); t = re.sub(r"\b(\d{2,3})(?=[A-Z][a-z]?)", r"$^{\1}$", t)  # isotope mass numbers
-            t = re.sub(r"(\d?[+-])(?=$|[\s,)])", r"$^{\1}$", t)  # charges: Fe3+, O2-
-            return re.sub(r"(?<=[A-Za-z)])(\d+(?:\.\d+)?)", r"$_{\1}$", t)  # stoichiometry: SiO2, Al2O3
-        df = b.df.dropna(how="all")
-        cell = lambda v: "" if v is None or (isinstance(v, float) and not np.isfinite(v)) else f"{v:.{digits}g}" if isinstance(v, (float, np.floating)) else esc(v)
+            t = esc(t); t = re.sub(r"\b(\d{2,3})(?=[A-Z][a-z]?)", r"$^{\1}$", t)  # isotope mass numbers: 206Pb
+            t = re.sub(r"(?:(?<=[A-Z])|(?<=[A-Z][a-z]))(\d?[+-])(?=$|[\s,/)])", r"$^{\1}$", t)  # charges after an element: Fe3+, O2- (not 'yErr-')
+            # stoichiometry only inside a formula-like word (SiO2, Al2O3, H2O), not in labels such as SpotA1 or Sample12
+            return re.sub(rf"\b(?:{el}\d*)*{el}\d+(?:{el}\d*)*\b",
+                          lambda m: m.group(0) if not re.fullmatch(rf"(?:{el}\d*)+", m.group(0)) or re.search(r"[a-z]{2}", m.group(0))
+                          else re.sub(r"(?<=[A-Za-z])(\d+)", r"$_{\1}$", m.group(0)), t)
+
+        def cell(v):
+            if v is None or (isinstance(v, (float, np.floating)) and not np.isfinite(v)): return ""
+            if isinstance(v, (bool, np.bool_)): return str(bool(v))
+            if isinstance(v, (int, np.integer)): return str(int(v))
+            if isinstance(v, (float, np.floating)):
+                av = abs(float(v))
+                if av == 0: return "0"
+                if 1e-3 <= av < 1e6:  # plain notation in the usual range: 12450, not 1.245e+04
+                    dec = max(0, digits - 1 - int(np.floor(np.log10(av))))
+                    return f"{v:.{dec}f}"
+                return f"{v:.{digits - 1}e}"
+            return esc(v)
+        masked = {r for _, r in getattr(b, "mask", set())}  # masked (rejected) analyses stay out of a publication table
+        df = b.df.drop(index=[i for i in b.df.index if i in masked]).dropna(how="all")
         num = [np.issubdtype(df[c].dtype, np.number) for c in df.columns]
         lines = [r"% requires \usepackage{booktabs}", r"\begin{table}", r"\centering", r"\caption{" + esc(b.name) + "}",
                  r"\begin{tabular}{" + "".join("r" if n else "l" for n in num) + "}", r"\toprule",
@@ -973,25 +1041,43 @@ class Main(QMainWindow):
         if not fn:
             fn, _ = QFileDialog.getOpenFileName(self, "Open project", "", f"{APP} project (*.pbp)")
             if not fn: return
-        with zipfile.ZipFile(fn) as z:  # read and check the file before closing anything
-            meta = json.loads(z.read("project.json"))
-            if not isinstance(meta.get("windows"), list): raise ValueError("Not a PlotBench project file.")
-            missing = [n for st in meta["windows"] for x in st.get("sheets", []) for n in (x.get("csv"), x.get("npy")) if n and n not in z.namelist()]
-            if missing: raise ValueError(f"Project file is damaged (missing {', '.join(missing[:3])}).")
+        meta, frames, arrays = read_project(fn)  # read, check and decode everything before closing anything
+        if not self.confirm_discard("opening another project"): return
+        # all or nothing: the current session is kept in a temporary project, and put back if building the new one fails part way
+        backup = None
+        if self.windows():
+            fd, backup = tempfile.mkstemp(suffix=".pbp"); os.close(fd)
+            try: self._write_project(backup, {"app": APP, "version": VERSION, "author": "Kishan Tiwari", "windows": []})
+            except Exception: os.remove(backup); raise
+        state = (self.project_path, self.dirty, self.windowTitle())
+        try:
+            self._close_all(); self._build_project(meta, frames, arrays)
+        except Exception:
+            self._close_all()
+            if backup:
+                self._build_project(*read_project(backup))
+            self.project_path = state[0]; self.setWindowTitle(state[2]); self.dirty = state[1]; self.refresh_explorer()
+            raise
+        finally:
+            if backup and os.path.exists(backup): os.remove(backup)
+        self.refresh_explorer()
+        self.project_path = fn; self.setWindowTitle(f"{APP} {VERSION} - {Path(fn).name}"); self.add_recent(fn); self.clear_dirty()
+
+    def _close_all(self):
         self._bulk_close = True
         try:
             self.mdi.closeAllSubWindows(); QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)  # really remove closed windows now
         finally: self._bulk_close = False
-        with zipfile.ZipFile(fn) as z:
+
+    def _build_project(self, meta, frames, arrays):
+        """Windows from a decoded project (see read_project)."""
+        if True:
             for st in meta["windows"]:
                 if st["kind"] != "book": continue
                 sheets = st.get("sheets") or [{**st, "name": "Sheet1"}]  # 1.0 projects had one sheet per book
                 b = None
                 for sst in sheets:
-                    tc = sst.get("text_cols", [])
-                    df = pd.read_csv(StringIO(z.read(sst["csv"]).decode()), dtype={c: str for c in tc})
-                    for c in tc:  # mixed columns: plain numbers back to floats, any other text kept exactly
-                        if c in df.columns: df[c] = df[c].map(lambda v: _num_or_text(v) if isinstance(v, str) else v).astype(object)
+                    df = frames[sst["csv"]]
                     if b is None:
                         b = self.add_win(Workbook(self, st["name"], df, sst["name"])); sh = b.current()
                     else: sh = b.add_sheet(sst["name"], df)
@@ -1000,12 +1086,11 @@ class Main(QMainWindow):
                     sh.cell_formulas = {(c, int(r)): t for c, r, t in sst.get("cells", []) if c in sh.df.columns}; sh.eval_cells()
                     sh.model.refresh()
                 for s in b.sheets: s.eval_cells(); s.model.refresh()  # again, now that every sheet a formula may read is loaded
-            import io as _io
             for st in meta["windows"]:
                 if st["kind"] != "matrix": continue
                 mb = None
                 for sst in st["sheets"]:
-                    M = np.load(_io.BytesIO(z.read(sst["npy"])))
+                    M = arrays[sst["npy"]]
                     if mb is None: mb = self.add_win(MatrixBook(self, st["name"], M, sst["extent"], sst["name"])); ms = mb.current()
                     else: ms = mb.add_sheet(sst["name"], M, sst["extent"])
                     ms.formula, ms.zlabel = sst.get("formula", ""), sst.get("zlabel", sst["name"])
@@ -1024,8 +1109,6 @@ class Main(QMainWindow):
                 for sh in w.sheets:
                     sst = next((x for st in meta["windows"] if st.get("name") == w.name for x in st.get("sheets", []) if x["name"] == sh.name), {})
                     sh.ops = list(sst.get("ops", []))
-        self.refresh_explorer()
-        self.project_path = fn; self.setWindowTitle(f"{APP} {VERSION} - {Path(fn).name}"); self.add_recent(fn); self.clear_dirty()
 
     # ---- column
     def col_formula(self):
@@ -1059,8 +1142,10 @@ class Main(QMainWindow):
             if found: out[str(y)] = found["y"] if list(found) == ["y"] else found
         return out
 
-    def thermobarometry(self, sh=None, method=None, inputs=None):
-        """Temperature or pressure from a published calibration, as a new column. inputs: {input label: column name or number}."""
+    def thermobarometry(self, sh=None, method=None, inputs=None, mc=None):
+        """Temperature or pressure from a published calibration, as a new column. inputs: {input label: column name or number}.
+        mc: None, or {"rel": relative 1-sigma of the analyses (0.02 = 2 %), "n": draws, "P (kbar)": absolute 1-sigma ...} for a Monte Carlo
+        1-sigma column. Methods with a recorded calibration range also get a column flagging rows outside it."""
         from . import thermobaro as TB, mineral as MN
         sh = sh or self.need_book()
         if not sh: return
@@ -1077,14 +1162,24 @@ class Main(QMainWindow):
             def build(name):
                 while form.rowCount(): form.removeRow(0)
                 widgets.clear(); m = TB.METHODS[name]
-                info.setText(f"<b>{m['eq']}</b><br>{m['ref']}<br><span style='color:gray'>{m.get('note', '')}</span>")
+                info.setText(f"<b>{m['eq']}</b><br>{m['ref']}<br><span style='color:gray'>{m.get('note', '')}</span>"
+                             + (f"<br><b>{'Equilibrium window' if TB.VALID[name].get('kind') else 'Calibration range'}:</b> {TB.VALID[name]['ref']} "
+                                "(rows outside it are flagged in a new column)" if name in TB.VALID else ""))
                 for kind, label, extra in m["inputs"]:
                     w_ = self._tb_widget(kind, extra, cols, oxides); form.addRow(label, w_); widgets[label] = (kind, w_)
             pick.currentTextChanged.connect(build); build(pick.currentText())
+            from PySide6.QtWidgets import QCheckBox, QSpinBox, QHBoxLayout
+            mc_on = QCheckBox("Monte Carlo uncertainty (1σ column)"); mc_rel = QDoubleSpinBox(); mc_rel.setRange(0.1, 50); mc_rel.setValue(2.0)
+            mc_rel.setSuffix(" % per analysis"); mc_n = QSpinBox(); mc_n.setRange(50, 5000); mc_n.setValue(500); mc_n.setSuffix(" draws")
+            mc_p = QDoubleSpinBox(); mc_p.setRange(0, 20); mc_p.setValue(0.0); mc_p.setPrefix("P ± "); mc_p.setSuffix(" kbar")
+            mc_row = QHBoxLayout(); [mc_row.addWidget(x) for x in (mc_on, mc_rel, mc_n, mc_p)]
+            mc_on.setToolTip("Every measured value (columns and oxide analyses) is varied by the relative 1σ error, independently, and the "
+                             "method rerun; the column holds the standard deviation of the results. The equation's own calibration error comes on top.")
             bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel); bb.accepted.connect(d.accept); bb.rejected.connect(d.reject)
-            lay = QVBoxLayout(d); lay.addWidget(QLabel("Method")); lay.addWidget(pick); lay.addWidget(info); lay.addWidget(form_box, 1); lay.addWidget(bb)
+            lay = QVBoxLayout(d); lay.addWidget(QLabel("Method")); lay.addWidget(pick); lay.addWidget(info); lay.addWidget(form_box, 1); lay.addLayout(mc_row); lay.addWidget(bb)
             if not d.exec(): return
             method = pick.currentText(); inputs = self._tb_values(widgets)
+            if mc_on.isChecked(): mc = {"rel": mc_rel.value() / 100, "n": mc_n.value(), "P (kbar)": mc_p.value(), "T (C), if no column": 0.0}
             d.deleteLater()  # the dialog and its widgets are not needed any more
         m = TB.METHODS[method]
         real = {str(c): c for c in sh.df.columns}
@@ -1092,9 +1187,24 @@ class Main(QMainWindow):
         used = "; ".join(f"{k} = {v}" for k, v in (inputs or {}).items())
         name = sh.add_column(f"{m['out']} ({m['unit'].replace('deg C', 'C')})", vals, units=m["unit"].replace("deg C", "°C"),
                              formula=f"{method}: {m['eq']}; inputs {used}. {m['ref']}")
+        cols_in = {k: (real.get(v, v) if isinstance(v, str) else v) for k, v in (inputs or {}).items()}
+        extra = ""
+        if method in TB.VALID:
+            rng = TB.VALID[method]; flag = TB.in_range(method, vals, {k: v for k, v in cols_in.items() if not isinstance(v, str)}, len(sh.df))
+            word = "in equilibrium" if rng.get("kind") == "equilibrium" else "in calibration range"
+            sh.add_column(f"{m['out']} {word}", np.where(np.isnan(flag), None, np.where(flag == 1, "yes", "no")).astype(object),
+                          formula=f"{method}: {rng['ref']}", snap=False)
+            nout = int(np.nansum(flag == 0))
+            if nout: extra = f"; {nout} rows {'not in equilibrium' if rng.get('kind') == 'equilibrium' else 'outside the calibration range'} ({rng['ref']})"
+        if mc:
+            sd = TB.monte_carlo(method, cols_in, sh.arr, oxides, len(sh.df), rel=mc["rel"], n=mc.get("n", 500),
+                                num_sd={k: v for k, v in mc.items() if k not in ("rel", "n")})
+            sh.add_column(f"1s {m['out']} ({m['unit'].replace('deg C', 'C')})", sd, units=m["unit"].replace("deg C", "°C"),
+                          formula=f"Monte Carlo, {mc.get('n', 500)} draws, {100 * mc['rel']:g} % relative 1-sigma on each measured input"
+                                  + "".join(f", {k} ± {v:g}" for k, v in mc.items() if k not in ("rel", "n") and v), snap=False, desig="yErr")
         sh.model.refresh(); sh.changed(); self.mark_dirty()
         ok = np.isfinite(vals)
-        self.statusBar().showMessage(f"{method}: {ok.sum()} values in column {name}" + (f" ({(~ok).sum()} rows blank: inputs missing or outside the calibration, e.g. negative site occupancy)" if (~ok).any() else ""), 8000)
+        self.statusBar().showMessage(f"{method}: {ok.sum()} values in column {name}" + (f" ({(~ok).sum()} rows blank: inputs missing or outside the calibration, e.g. negative site occupancy)" if (~ok).any() else "") + extra, 12000)
         return name
 
     @staticmethod
@@ -1215,6 +1325,7 @@ class Main(QMainWindow):
                                r86=sh.arr(c86) if c86 else None, th_u=sh.arr(cthu) if cthu else None, t0=t0)
         how = f"{method}Pb correction, common Pb of Stacey & Kramers (1975)" + (f" at {t0:g} Ma" if t0 else " at the age of each analysis")
         a = sh.add_column(f"f206 ({method}) (%)", 100 * f, units="%", formula=how)
+        r = np.where(r > 0, r, np.nan)
         b = sh.add_column(f"206Pb*/238U ({method}-corr)", r, formula=how, snap=False)
         c = sh.add_column(f"Age 206Pb/238U {method}-corr (Ma)", t, units="Ma", formula=how, snap=False)
         errc = lambda x, y: next((k for k in sh.df.columns if re.search(rf"{x}\D*{y}", str(k).replace(" ", ""), re.I)
@@ -1222,9 +1333,10 @@ class Main(QMainWindow):
         s68 = errc("206", "238")
         if s68: sh.add_column(f"{s68} ({method}-corr)", sh.arr(s68) * r / np.where(sh.arr(c68) > 0, sh.arr(c68), np.nan), formula=how, snap=False)
         c75 = find("207", "235")
-        if c75:  # 207Pb*/235U = measured 207/235 minus common 207 (common 206 x (207/206)c x 238/235), so corrected points plot on concordia
+        if c75 and method in ("204", "208"):  # the 207Pb method puts each analysis on concordia by definition: no independent 207/235
+            # 207Pb*/235U = measured 207/235 minus common 207 (common 206 x (207/206)c x 238/235), so corrected points plot on concordia
             pa, pb, _ = GC.stacey_kramers(np.full_like(t, float(t0)) if t0 else t)
-            r75 = sh.arr(c75) - f * sh.arr(c68) * (pb / pa) * GC.U85
+            r75 = sh.arr(c75) - f * sh.arr(c68) * (pb / pa) * GC.U85; r75 = np.where(r75 > 0, r75, np.nan)
             sh.add_column(f"207Pb*/235U ({method}-corr)", r75, formula=how, snap=False)
             s75 = errc("207", "235")
             if s75: sh.add_column(f"{s75} ({method}-corr)", sh.arr(s75) * r75 / np.where(sh.arr(c75) > 0, sh.arr(c75), np.nan), formula=how, snap=False)
@@ -2183,6 +2295,12 @@ class Main(QMainWindow):
         if hasattr(self, "toolbar_menu"):
             self.toolbar_menu.clear()
             for tb in self.side_bars + [self.script_bar]: self.toolbar_menu.addAction(tb.toggleViewAction())
+        from PySide6.QtWidgets import QToolButton
+        from PySide6.QtGui import QIcon
+        from .ui_style import arrows
+        ar = arrows(theme)
+        for btn in self.findChildren(QToolButton):  # fold arrows on graph side panels follow the theme
+            if btn.property("fold_header"): btn.setIcon(QIcon(ar["down" if btn.isChecked() else "right"]))
         for w in self.windows():  # repaint sheet colours for the new theme
             if w.kind in SHEETED:
                 for sh in w.sheets: sh.model.refresh()

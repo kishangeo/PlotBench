@@ -16,12 +16,17 @@ def arrows(theme):
     """Paths of chevron arrows (down, up, right) drawn in the theme's text colour, for combo boxes, spin boxes, tree branches and
     folding headers; Qt draws none, or faint ones, once a style sheet styles those widgets."""
     import os, tempfile
-    col = palette(theme)["text"]; d = os.path.join(tempfile.gettempdir(), "plotbench_arrows"); os.makedirs(d, exist_ok=True); out = {}
+    col = palette(theme)["text"]; d = os.path.join(tempfile.gettempdir(), "plotbench_arrows"); out = {}
+    try: os.makedirs(d, exist_ok=True)
+    except OSError: pass
     for name, pts in (("down", "3,6 8,11 13,6"), ("up", "3,10 8,5 13,10"), ("right", "6,3 11,8 6,13")):
         f = os.path.join(d, f"{name}_{theme}.svg").replace("\\", "/")
-        with open(f, "w") as h:
-            h.write(f'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polyline points="{pts}" fill="none" '
-                    f'stroke="{col}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polyline points="{pts}" fill="none" '
+               f'stroke="{col}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+        try:  # a locked or read-only temp folder must not stop the program: the arrows are then simply missing
+            if not os.path.exists(f) or open(f).read() != svg:
+                with open(f, "w") as h: h.write(svg)
+        except OSError: pass
         out[name] = f
     return out
 
@@ -54,23 +59,23 @@ QComboBox {{ padding-right: 24px; }}
 QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 22px; border: none;
     border-left: 1px solid {c['border']}; border-top-right-radius: 6px; border-bottom-right-radius: 6px; }}
 QComboBox::drop-down:hover {{ background: {c['hover']}; }}
-QComboBox::down-arrow {{ image: url({ar['down']}); width: 12px; height: 12px; }}
-QComboBox::down-arrow:on {{ image: url({ar['up']}); }}
+QComboBox::down-arrow {{ image: url("{ar['down']}"); width: 12px; height: 12px; }}
+QComboBox::down-arrow:on {{ image: url("{ar['up']}"); }}
 QSpinBox, QDoubleSpinBox, QDateEdit, QTimeEdit, QDateTimeEdit {{ padding-right: 22px; }}
 QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {{ subcontrol-origin: border; width: 20px; border: none;
     border-left: 1px solid {c['border']}; background: transparent; }}
 QAbstractSpinBox::up-button {{ subcontrol-position: top right; border-top-right-radius: 6px; }}
 QAbstractSpinBox::down-button {{ subcontrol-position: bottom right; border-bottom-right-radius: 6px; border-top: 1px solid {c['border']}; }}
 QAbstractSpinBox::up-button:hover, QAbstractSpinBox::down-button:hover {{ background: {c['hover']}; }}
-QAbstractSpinBox::up-arrow {{ image: url({ar['up']}); width: 10px; height: 10px; }}
-QAbstractSpinBox::down-arrow {{ image: url({ar['down']}); width: 10px; height: 10px; }}
+QAbstractSpinBox::up-arrow {{ image: url("{ar['up']}"); width: 10px; height: 10px; }}
+QAbstractSpinBox::down-arrow {{ image: url("{ar['down']}"); width: 10px; height: 10px; }}
 QAbstractSpinBox::up-arrow:disabled, QAbstractSpinBox::down-arrow:disabled {{ image: none; }}
-QTreeView::branch:has-children:closed {{ image: url({ar['right']}); }}
-QTreeView::branch:has-children:open {{ image: url({ar['down']}); }}
-QToolButton::menu-indicator {{ image: url({ar['down']}); width: 10px; height: 10px; subcontrol-position: bottom right; }}
+QTreeView::branch:has-children:closed {{ image: url("{ar['right']}"); }}
+QTreeView::branch:has-children:open {{ image: url("{ar['down']}"); }}
+QToolButton::menu-indicator {{ image: url("{ar['down']}"); width: 10px; height: 10px; subcontrol-position: bottom right; }}
 QToolButton[popupMode="1"] {{ padding-right: 14px; }}
 QToolButton::menu-button {{ border: none; width: 14px; }}
-QToolButton::menu-arrow {{ image: url({ar['down']}); width: 10px; height: 10px; }}
+QToolButton::menu-arrow {{ image: url("{ar['down']}"); width: 10px; height: 10px; }}
 QComboBox QAbstractItemView {{ background: {c['raised']}; border: 1px solid {c['border']}; selection-background-color: {a}; selection-color: white; }}
 QCheckBox::indicator {{ width: 15px; height: 15px; border-radius: 4px; border: 1px solid {c['border']}; background: {c['base']}; }}
 QCheckBox::indicator:checked {{ background: {a}; border-color: {a}; }}
