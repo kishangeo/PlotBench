@@ -1,6 +1,6 @@
 ; PlotBench Windows installer (Inno Setup 6). Author: Kishan Tiwari <kishantiwari@iitkgp.ac.in>
 #define AppName "PlotBench"
-#define AppVersion "1.30.2"
+#define AppVersion "1.30.3"
 
 [Setup]
 AppId={{6C1F7A52-3E7B-4F6E-9B0B-5D2A1C9E7B11}

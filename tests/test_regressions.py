@@ -151,6 +151,46 @@ class TextFormatTests(unittest.TestCase):
         close(w)
 
 
+class LetterFormatTests(unittest.TestCase):
+    def test_selected_letters_only(self):
+        from PySide6.QtGui import QTextCursor
+        from plotbench import textfmt as TF
+        self.assertEqual(TF.markup(TF.parse(r"Ch_{\b{2}}^{\i{3}} \b{\i{x}}")), r"Ch_{\b{2}}^{\i{3}} \b{\i{x}}")
+        w = main_window(); sh = w.new_book(pd.DataFrame({"x": [1.0, 2], "y": [1.0, 4]}), "T").current()
+        g = w.new_graph(sh, "Scatter", "x", ["y"]); QA.processEvents(); g._set_text("0|@xlabel", text="Sample / CI Chondrite")
+        g.select_text("0|@xlabel"); bar = g.tfmt; f = bar.field
+        def sel(t):
+            i = f.toPlainText().index(t); c = f.textCursor(); c.setPosition(i); c.setPosition(i + len(t), QTextCursor.KeepAnchor); f.setTextCursor(c)
+        sel("CI"); bar.bold(); sel("le"); bar.sub(); sel("Chon"); bar.italic()
+        self.assertEqual(bar.words(), r"Samp_{le} / \b{CI} \i{Chon}drite")
+        self.assertEqual(g._plot_axes()[0].xaxis.label.get_text(), r"Samp$_{\mathregular{le}}$ / $\mathbf{CI}$ $\mathit{Chon}$drite")
+        sel("CI"); bar.bold(); self.assertNotIn(r"\b{CI}", bar.words())
+        close(w)
+
+
+class Audit1302Tests(unittest.TestCase):
+    def test_annotation_words_reset_and_one_undo_step(self):  # 1.30.2-B
+        w = main_window(); sh = w.new_book(pd.DataFrame({"x": [1.0, 2], "y": [1.0, 4]}), "T").current()
+        g = w.new_graph(sh, "Scatter", "x", ["y"]); g.spec["annotations"] = [{"kind": "text", "x": 1.5, "y": 2.0, "text": "old"}]; g.draw()
+        n = len(g.history); g._set_text("@ann|0", text="new", size=14); self.assertEqual(len(g.history), n + 1)
+        self.assertEqual(g.spec["annotations"][0]["text"], "old")  # the annotation keeps its own words
+        t = lambda: next(x for x in g._plot_axes()[0].texts if str(x.get_gid()).startswith("pbann:"))
+        self.assertEqual(t().get_text(), "new"); g._set_text("@ann|0", reset=True); self.assertEqual(t().get_text(), "old"); close(w)
+
+    def test_title_bar_and_graph_properties_agree(self):  # 1.30.2-C
+        w = main_window(); sh = w.new_book(pd.DataFrame({"x": [1.0, 2], "y": [1.0, 4]}), "T").current()
+        g = w.new_graph(sh, "Scatter", "x", ["y"]); g._set_text("0|@xlabel", text="SiO_{2}")
+        self.assertEqual(g.spec["style"]["xlabel"], "SiO_{2}"); self.assertEqual(g._plot_axes()[0].get_xlabel(), r"SiO$_{\mathregular{2}}$")
+        st = dict(g.spec["style"]); st["xlabel"] = "Silica"; g.set_style(st); self.assertEqual(g._plot_axes()[0].get_xlabel(), "Silica")
+        g._set_text("0|@xlabel", reset=True); self.assertEqual(g.spec["style"]["xlabel"], ""); close(w)
+
+    def test_one_row_temperature_column(self):  # 1.30.2-E
+        from plotbench import thermobaro as TB
+        m = "Garnet-orthopyroxene Al (Brey & Kohler 1990, PBKN)"
+        f = TB.in_range(m, np.array([30.0]), {"T (C) column": np.array([700.0]), "T (C), if no column": 1000.0}, 1)
+        self.assertEqual(f[0], 0.0)  # 700 C is below the 900-1400 C calibration, whatever the number box says
+
+
 class ExportTests(unittest.TestCase):
     def test_latex_numbers_masks_labels(self):
         w = main_window()

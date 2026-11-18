@@ -69,12 +69,16 @@ def full_style(style): return {**DEFAULT_STYLE, **default_theme(), **(style or {
 
 
 def rc_for(st):
-    return {"font.family": st["font"], "font.size": st["font_size"], "axes.linewidth": 1.0,
+    return {"font.family": [st["font"], "DejaVu Sans", "STIXGeneral"],  # symbols missing from the chosen font come from these
+            "font.size": st["font_size"], "axes.linewidth": 1.0,
             "lines.linewidth": st["line_width"], "lines.markersize": st["marker_size"], "image.cmap": st["cmap"],
             "axes.grid": st["grid"], "axes.prop_cycle": cycler(color=PALETTES.get(st["palette"], PALETTES["Default (tab10)"])),
             "xtick.direction": "in" if st["ticks_in"] else "out", "ytick.direction": "in" if st["ticks_in"] else "out",
             "xtick.top": st["mirror_ticks"], "ytick.right": st["mirror_ticks"], "legend.frameon": st["legend_frame"],
-            "figure.facecolor": st["background"], "savefig.facecolor": st["background"]}
+            "figure.facecolor": st["background"], "savefig.facecolor": st["background"],
+            # bold and italic parts of a text (\b{..}, \i{..}) in the graph's own font, not the default maths font
+            "mathtext.fontset": "custom", "mathtext.rm": st["font"], "mathtext.it": f"{st['font']}:italic", "mathtext.bf": f"{st['font']}:bold",
+            "mathtext.bfit": f"{st['font']}:italic:bold", "mathtext.sf": st["font"], "mathtext.fallback": "stixsans"}
 
 
 def _num(v):
@@ -88,10 +92,11 @@ def apply_post(fig, st):
     axes = [a for a in fig.axes if a.get_label() != "<colorbar>" and not hasattr(a, "_colorbar")]
     if not axes: return
     ax = axes[0]
-    if st["title"]: ax.set_title(st["title"])
+    from .textfmt import rich
+    if st["title"]: ax.set_title(rich(st["title"]))
     if st["xlabel"]:
-        for a in ([b for b in axes if b.get_xlabel()] or [ax]): a.set_xlabel(st["xlabel"])  # bottom panels of Harker / stacked plots
-    if st["ylabel"]: ax.set_ylabel(st["ylabel"])
+        for a in ([b for b in axes if b.get_xlabel()] or [ax]): a.set_xlabel(rich(st["xlabel"]))  # bottom panels of Harker / stacked plots
+    if st["ylabel"]: ax.set_ylabel(rich(st["ylabel"]))
     if ax.name == "rectilinear":
         for axis in ("x", "y"):
             sc = st[f"{axis}scale"]
@@ -229,6 +234,7 @@ TEXT_Z = {"front": 10.0, "middle": 3.0, "back": 0.5}  # over points / above line
 
 
 TICKS = ("@xticks", "@yticks", "@zticks")
+STYLE_TEXTS = {"0|@title": "title", "0|@xlabel": "xlabel", "0|@ylabel": "ylabel"}  # texts that are also Graph Properties fields
 
 
 def text_targets(fig):
@@ -441,6 +447,7 @@ def _shortcut_panel(g):
     from PySide6.QtWidgets import QGridLayout, QPushButton, QToolButton
     from PySide6.QtCore import Qt
     w = QWidget(); outer = QVBoxLayout(w); outer.setContentsMargins(6, 4, 6, 4); outer.setSpacing(2)
+    outer.setSizeConstraint(QVBoxLayout.SetMinimumSize)  # the panel scrolls instead of squeezing its rows
     settings = getattr(g.main, "settings", None); folded = set((settings or {}).get("panel_collapsed", []))
     from PySide6.QtCore import QSize
     from PySide6.QtGui import QIcon
@@ -458,7 +465,7 @@ def _shortcut_panel(g):
             if settings is not None:
                 f = set(settings.get("panel_collapsed", [])); (f.discard(t) if on else f.add(t)); settings["panel_collapsed"] = sorted(f)
         h.toggled.connect(flip); h.setProperty("fold_header", True); outer.addWidget(h); outer.addWidget(body); return body
-    g._curve_box = QVBoxLayout(section("Curves")); g._curve_box.setContentsMargins(4, 0, 0, 0); g._curve_box.setSpacing(0)
+    g._curve_box = QVBoxLayout(section("Curves")); g._curve_box.setContentsMargins(4, 0, 0, 0); g._curve_box.setSpacing(4)
     grid = None; last = None; row = col = 0
     for group, label, fn in GRAPH_SHORTCUTS:
         if group != last:
@@ -556,7 +563,7 @@ class GraphWindow(QWidget):
         from PySide6.QtCore import QTimer
         while box.count():
             w = box.takeAt(0).widget()
-            if w is not None: w.deleteLater()
+            if w is not None: w.hide(); w.deleteLater()  # hidden at once: never drawn over the new boxes
         ser = (self.spec.get("style") or {}).get("series") or {}
         for i, n in enumerate(self.series_names):
             cb = QCheckBox(n if len(n) <= 38 else n[:36] + "..."); cb.setToolTip(f"{n}: untick to hide this curve (it also leaves the legend)")
@@ -878,16 +885,19 @@ class GraphWindow(QWidget):
 
     def _set_text(self, key, **kw):
         """Change one plot text's override (one undo step). reset=True forgets it; reset_all / show_all act on every text."""
-        if key and key.startswith("@ann|") and "text" in kw:  # a text annotation keeps its words in the annotation itself
-            i = int(key[5:]); anns = self.spec.get("annotations", [])
-            if i < len(anns): self.snapshot(); anns[i]["text"] = kw.pop("text"); self.spec["style"].get("texts", {}).get(key, {}).pop("text", None)
-            if not kw: self.draw(); self.main.mark_dirty(); return
         st = dict(self.spec["style"]); tx = {k: dict(v) for k, v in st.get("texts", {}).items()}
+        field = STYLE_TEXTS.get(key)  # the graph title and the axis titles of the first panel
+        if field and "text" in kw:  # same words as in Graph Properties, so the two never disagree
+            tx.setdefault(key, {}).setdefault("orig", st.get(field, "")); st[field] = kw.pop("text")
+        if field and (kw.get("reset") or kw.get("reset_all")) and "orig" in tx.get(key, {}): st[field] = tx[key]["orig"]
+        if kw.get("reset_all"):
+            for k, f in STYLE_TEXTS.items():
+                if "orig" in tx.get(k, {}): st[f] = tx[k]["orig"]
         if kw.pop("reset_all", False): tx = {}
         elif kw.pop("show_all", False):
             for v in tx.values(): v.pop("hide", None)
         elif kw.pop("reset", False): tx.pop(key, None)
-        else: tx.setdefault(key, {}).update(kw)
+        elif kw: tx.setdefault(key, {}).update(kw)
         st["texts"] = {k: v for k, v in tx.items() if v}; self.set_style(st); self.main.mark_dirty()
 
     def _text_menu(self, key, t):
@@ -897,7 +907,7 @@ class GraphWindow(QWidget):
 
         def edit():
             cur = self._text_target(key); old = (cur[2].get("text", cur[3]) if cur else t.get_text())
-            s, ok = QInputDialog.getMultiLineText(self, "Edit text", "Text (SiO_{2}, Fe^{3+}, \b{bold}, \i{italic}):", old)
+            s, ok = QInputDialog.getMultiLineText(self, "Edit text", r"Text (SiO_{2}, Fe^{3+}, \b{bold}, \i{italic}):", old)
             if ok: self._set_text(key, text=s)
 
         def size():
@@ -1059,8 +1069,11 @@ class GraphWindow(QWidget):
 
     def _text_target(self, key):
         """(key, texts, user overrides, original words) of a text by key, as drawn now; None if it is not in the graph."""
+        st = self.spec.get("style") or {}
         for k, arts, words in text_targets(self.fig):
-            if k == key: return k, arts, dict((self.spec.get("style") or {}).get("texts", {}).get(k, {})), words
+            if k == key:
+                if k in STYLE_TEXTS and st.get(STYLE_TEXTS[k]): words = st[STYLE_TEXTS[k]]  # the words as typed (with their markup)
+                return k, arts, dict(st.get("texts", {}).get(k, {})), words
         return None
 
     def select_text(self, key, redraw=True):
@@ -1110,6 +1123,7 @@ class GraphWindow(QWidget):
                 self.history.append(before); del self.history[:-30]; self.redo_stack = []
                 self.spec.setdefault("style", {}).setdefault("texts", {}).setdefault(key, {})["pos"] = list(pos)
                 if hasattr(self.main, "mark_dirty"): self.main.mark_dirty()
+            if self._tsel: self.select_text(self._tsel)  # the outline moves with the text
             return
         if self._pre is None: return
         before, starts = self._pre; self._pre = None; moved = False; st = self.spec.setdefault("style", {})
@@ -1127,6 +1141,7 @@ class GraphWindow(QWidget):
         if moved:
             self.history.append(before); del self.history[:-30]; self.redo_stack = []
             if hasattr(self.main, "mark_dirty"): self.main.mark_dirty()
+            if self._tsel: self.select_text(self._tsel)
 
     def _click(self, ev):
         if not self.act_reader.isChecked() or ev.inaxes is None or ev.xdata is None: return
@@ -1236,6 +1251,9 @@ class StyleDialog(QDialog):
             def mutate(g):
                 new = {**g.spec["style"], **self.value()}
                 if new.get("legend") != g.spec["style"].get("legend", DEFAULT_STYLE["legend"]): new.pop("legend_pos", None)
+                for k, f in STYLE_TEXTS.items():
+                    if new.get(f) != g.spec["style"].get(f, DEFAULT_STYLE[f]) and "text" in (new.get("texts") or {}).get(k, {}):
+                        new["texts"] = {a: dict(b) for a, b in new["texts"].items()}; new["texts"][k].pop("text", None)
                 g.spec["style"] = new
             self.live = graph_live(self, graph, mutate)
             row = QHBoxLayout(); row.addWidget(tabs, 1); row.addWidget(add_pane(self.live, graph), 1); lay.addLayout(row)

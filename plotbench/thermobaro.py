@@ -642,7 +642,7 @@ def in_range(method, values, inputs, n_rows):
     stands for the single temperature value."""
     rng = VALID.get(method); vals = np.asarray(values, float); inputs = dict(inputs)
     tc = inputs.get("T (C) column")
-    if tc is not None and not isinstance(tc, str) and np.size(tc) > 1: inputs["T (C), if no column"] = tc
+    if isinstance(tc, (np.ndarray, list, tuple)) and np.size(tc) > 0: inputs["T (C), if no column"] = tc  # also a one-row sheet
     if rng is None: return np.full(len(vals), np.nan)
     ok = np.isfinite(vals) & (vals >= rng["out"][0]) & (vals <= rng["out"][1])
     for label, (lo, hi) in ((k, v) for k, v in rng.items() if isinstance(v, tuple) and k != "out"):

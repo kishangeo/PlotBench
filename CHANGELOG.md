@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.30.3 (2026-11-18)
+
+- The words box of the text format bar shows formatting as it will look (bold, italic, subscript, superscript) instead of codes.
+  Select any letters in it and press B, I, superscript, subscript or stacked to format only those letters; press again to undo it.
+  With nothing selected, B and I act on the whole text.
+- Stacked sub- and superscript: select e.g. "2,3+" (or two characters); the first part becomes the subscript, the second the
+  superscript.
+- The Greek button is now a symbol picker (Ω) with 464 symbols in 11 groups: Greek, maths, relations, arrows, superscript and
+  subscript digits, units, chemistry, shapes, numbers and fractions, accented letters, punctuation. Ctrl+G still turns selected
+  Latin letters into Greek.
+- Bold and italic parts of a text use the graph's font; symbols missing from that font are taken from DejaVu Sans or STIX.
+- The Curves list of the graph side panel no longer squeezes its rows when a graph has many curves.
+- Fixes from the 1.30.2 audit: the Edit text prompt showed a box instead of ; words typed for a text annotation are kept as an edit
+  of the graph (so Reset brings back the original words) and count as one undo step; the graph title and axis titles typed in the text
+  bar and in Graph Properties are the same field, so neither hides the other; the selection outline follows a dragged text; the
+  calibration-range check uses a temperature column on a one-row sheet too.
+
 ## 1.30.2 (2026-11-18)
 
 - Every text of a graph can be formatted on its own: title, axis titles, tick labels (per axis), legend title and entries, field

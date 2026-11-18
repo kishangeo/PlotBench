@@ -784,16 +784,20 @@ tool, which then becomes the one shown. The same tools are in the <b>Draw</b> an
 <p>Every text in a graph can be formatted on its own, without changing the others: the title, each axis title, the tick labels of
 each axis, the legend title and each legend entry, field names and other texts drawn by the plot, your own text annotations, and
 colour-bar titles. Click a text to select it; a red dashed outline marks it (the outline is never exported). The <b>text format
-bar</b>, under the curve format bar, then shows and changes only that text: its words, font, size, <b>B</b>old, <i>I</i>talic,
-superscript (x&sup2;), subscript (x&#8322;), stacked sub- and superscript, Greek letters (&alpha;&beta;), larger and smaller (A&#8314;,
-A&#8315;), colour, orientation (&#8635;, the angle in degrees) and reset (&#8634;). Double-click a text to put the cursor in its words.</p>
-<p>Superscripts and subscripts are written in the words: <code>SiO_{{2}}</code> gives SiO<sub>2</sub>, <code>Fe^{{3+}}</code> gives
-Fe<sup>3+</sup>, <code>X_{{a}}^{{b}}</code> stacks a subscript and a superscript, <code>\b{{...}}</code> and <code>\i{{...}}</code> make part of a
-text bold or italic. You need not type these: select the words in the field and click a button, or press Ctrl+= (subscript),
-Ctrl+Shift+= (superscript), Ctrl+- (stacked), Ctrl+B, Ctrl+I, Ctrl+G (turns the selected Latin letters into Greek), Ctrl+Shift+&gt; and
-Ctrl+Shift+&lt; (size). With nothing selected, B and I act on the whole text. Tick labels are formatted as a group for each axis, and
-keep their format when you zoom. Each change is one undo step, is saved with the project and appears in exported figures. Right-click
-a text for more (layer, hide, reset all texts).</p>
+bar</b>, under the curve format bar, then shows that text in its words box, formatted as it looks.</p>
+<p><b>Formatting single letters.</b> Select letters in the words box, as in a word processor, and click <b>B</b> (bold),
+<i>I</i> (italic), x&sup2; (superscript), x&#8322; (subscript) or the stacked button: only those letters change, in the box and on
+the graph. Click the same button again to remove that format. With nothing selected, B and I act on the whole text. For a stacked
+subscript and superscript (as in X<sub>2</sub><sup>3+</sup> written one above the other), type for example <code>2,3+</code>, select it
+and click the stacked button. Keys in the words box: Ctrl+B, Ctrl+I, Ctrl+= (subscript), Ctrl+Shift+= (superscript), Ctrl+- (stacked),
+Ctrl+G (turns the selected Latin letters into Greek), Ctrl+Shift+&gt; and Ctrl+Shift+&lt; (size), Enter (apply the words).</p>
+<p><b>Symbols.</b> The &Omega; button opens a picker with 464 symbols in groups: Greek, maths, relations, arrows, superscript and
+subscript digits, units, chemistry, shapes, numbers and fractions, accented letters and punctuation. A click inserts the symbol at
+the cursor.</p>
+<p><b>Whole text.</b> Font, size, colour (A), larger and smaller (A&#8314;, A&#8315;), orientation (&#8635;, the angle in degrees) and reset
+(&#8634;) act on the whole selected text. Tick labels are formatted as a group for each axis and keep their format when you zoom. Each
+change is one undo step, is saved with the project and appears in exported figures. Right-click a text for more (layer, hide, reset
+all texts).</p>
 <h3>New in 1.30.1: calibration ranges, uncertainties and validation</h3>
 <p>Thermobarometry results now come with checks. A method whose authors state a calibration domain (for example Ti-in-zircon,
 580&ndash;1070 &deg;C; Ti-in-quartz of Thomas et al. 2010, 700&ndash;940 &deg;C and 5&ndash;20 kbar) adds a column saying, for each row, whether the
