@@ -23,10 +23,10 @@ Methods not listed here are covered by the self-checks in each module (`_demo()`
 | Fe-Ti oxides, spinel model parameters | Ghiorso & Evans (2008) AJS 308, Table 6 | worked example | W1p2 | 71.76 | 71.75 | 0.002 | kJ | yes |
 | Fe-Ti oxides, spinel model parameters | Ghiorso & Evans (2008) AJS 308, Table 6 | worked example | W24 | 146.4 | 146.4 | 0.002 | kJ | yes |
 | Fe-Ti oxides, spinel model parameters | Ghiorso & Evans (2008) AJS 308, Table 6 | worked example | dG22 | -12.55 | -12.55 | 0.002 | kJ | yes |
-| Fe-Ti oxide T (Ghiorso & Evans 2008) | Evans et al. (2006) Am Mineral 91, Table 3 | experiments (performance) | run T recovered (n = 21) | for information | mean -41.23, SD 82.64 |  | °C | info |
-| Fe-Ti oxide ΔNNO (Ghiorso & Evans 2008) | Evans et al. (2006) Am Mineral 91, Table 3 | experiments (performance) | run fO2 recovered (n = 21) | for information | mean +0.31, SD 0.69 |  | log units | info |
-| Fe-Ti oxide T (Ghiorso & Evans 2008) | Evans et al. (2006) Am Mineral 91, Table 4 | experiments (performance) | run T recovered (n = 20) | for information | mean +6.13, SD 37.45 |  | °C | info |
-| Fe-Ti oxide ΔNNO (Ghiorso & Evans 2008) | Evans et al. (2006) Am Mineral 91, Table 4 | experiments (performance) | run fO2 recovered (n = 20) | for information | mean +0.25, SD 0.52 |  | log units | info |
+| Fe-Ti oxide T (Ghiorso & Evans 2008) | Evans et al. (2006) Contrib Mineral Petrol 152, 149-167, Table 3 | experiments (performance) | run T recovered (n = 21) | for information | mean -41.23, SD 82.64 |  | °C | info |
+| Fe-Ti oxide ΔNNO (Ghiorso & Evans 2008) | Evans et al. (2006) Contrib Mineral Petrol 152, 149-167, Table 3 | experiments (performance) | run fO2 recovered (n = 21) | for information | mean +0.31, SD 0.69 |  | log units | info |
+| Fe-Ti oxide T (Ghiorso & Evans 2008) | Evans et al. (2006) Contrib Mineral Petrol 152, 149-167, Table 4 | experiments (performance) | run T recovered (n = 20) | for information | mean +6.13, SD 37.45 |  | °C | info |
+| Fe-Ti oxide ΔNNO (Ghiorso & Evans 2008) | Evans et al. (2006) Contrib Mineral Petrol 152, 149-167, Table 4 | experiments (performance) | run fO2 recovered (n = 20) | for information | mean +0.25, SD 0.52 |  | log units | info |
 | Garnet-opx Al barometer PBKN (Brey & Köhler 1990) | Brey et al. (1990) J Petrol 31, 1313-1352 (runs); Brey & Köhler (1990) | experiments | run P recovered at run T (n = 12) | mean 0 ± 1.0, SD ≤ 3.0 | mean +0.05, SD 2.63 |  | kbar | yes |
 | Garnet-opx Al barometer (Nickel & Green 1985) | Brey et al. (1990) J Petrol 31, 1313-1352 (runs); Brey & Köhler (1990) | experiments | run P recovered at run T (n = 12) | mean 0 ± 1.0, SD ≤ 3.0 | mean +0.17, SD 2.79 |  | kbar | yes |
 | Ca-in-opx thermometer (Brey & Köhler 1990) | Brey et al. (1990) J Petrol 31, 1313-1352 (runs); Brey & Köhler (1990) | experiments | run T recovered at run P (n = 12) | mean 0 ± 30, SD ≤ 50 | mean +1.88, SD 19.57 |  | °C | yes |

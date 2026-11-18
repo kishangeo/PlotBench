@@ -56,7 +56,7 @@ dT, dN = np.array(dT), np.array(dN)
 for tab in ("Table 3", "Table 4"):  # model performance, reported without a pass/fail: Ghiorso & Evans (2008, p. 985) note their model
     k = np.array([p["table"].strip() == tab for p in E])  # does not recover the low-T hydrothermal runs well (900 C reads high)
     for name, r, unit in (("T", dT[k], "°C"), ("ΔNNO", dN[k], "log units")):
-        ROWS.append((f"Fe-Ti oxide {name} (Ghiorso & Evans 2008)", f"Evans et al. (2006) Am Mineral 91, {tab}", "experiments (performance)",
+        ROWS.append((f"Fe-Ti oxide {name} (Ghiorso & Evans 2008)", f"Evans et al. (2006) Contrib Mineral Petrol 152, 149-167, {tab}", "experiments (performance)",
                      f"run {'T' if name == 'T' else 'fO2'} recovered (n = {k.sum()})", "for information",
                      f"mean {r.mean():+.2f}, SD {r.std(ddof=1):.2f}", None, unit, None))
 runs = np.array([r[1:] for r in TB.brey_runs()], float)  # P, T, P_BKN, P_NG, P_HG
