@@ -7,6 +7,8 @@
 PlotBench takes you from a spreadsheet of analyses (EPMA, LA-ICP-MS, XRF, isotope ratios, Raman or XRD spectra) to
 publication-ready figures without writing code. It runs on Windows, macOS and Linux and needs no Python, R or MATLAB installation.
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24330955.svg)](https://doi.org/10.5281/zenodo.24330955)
+
 **Website:** https://plotbench.vercel.app/ &nbsp;·&nbsp; **Download:** [latest release](https://github.com/kishangeo/PlotBench/releases/latest)
 
 ![PlotBench main window](docs/img/window.png)
@@ -60,8 +62,13 @@ Windows installer.
 
 ## Citing PlotBench
 
-If PlotBench helps your work, please cite it. GitHub's **Cite this repository** button (from [`CITATION.cff`](CITATION.cff)) gives the
-reference in APA and BibTeX. Every diagram and calculation in the app also names the paper it comes from; please cite those too.
+If PlotBench helps your work, please cite it:
+
+> Tiwari, K. (2026). *PlotBench: a desktop workbench for scientific graphing, petrology, thermobarometry and geochronology* (Version 1.30.1)
+> [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24330956
+
+To cite whichever version is newest, use the all-versions DOI https://doi.org/10.5281/zenodo.24330955. GitHub's **Cite this repository**
+button (from [`CITATION.cff`](CITATION.cff)) gives the reference in APA and BibTeX. Every diagram and calculation in the app also names the paper it comes from; please cite those too.
 
 ## Feedback
 
