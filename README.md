@@ -64,10 +64,10 @@ Windows installer.
 
 If PlotBench helps your work, please cite it:
 
-> Tiwari, K. (2026). *PlotBench: a desktop workbench for scientific graphing, petrology, thermobarometry and geochronology* (Version 1.30.1)
-> [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24330956
+> Tiwari, K. (2026). *PlotBench: a desktop workbench for scientific graphing, petrology, thermobarometry and geochronology* 
+> [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.24330955
 
-To cite whichever version is newest, use the all-versions DOI https://doi.org/10.5281/zenodo.24330955. GitHub's **Cite this repository**
+The DOI covers all versions and always resolves to the newest release. GitHub's **Cite this repository**
 button (from [`CITATION.cff`](CITATION.cff)) gives the reference in APA and BibTeX. Every diagram and calculation in the app also names the paper it comes from; please cite those too.
 
 ## Feedback
