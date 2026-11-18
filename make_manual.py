@@ -775,6 +775,25 @@ diagrams are not included either, because the boundaries in the scanned figure c
 (Ctrl+= and Ctrl+-) or the Zoom tool (drag a rectangle). <b>Reset view</b> (Ctrl+0, the corner-arrows button) shows the whole graph again;
 Back and Forward step through earlier views. Log axes zoom in log space. The panel to the right of a wide graph has a <b>Curves</b> section
 (untick a curve to hide it) and folding groups of shortcuts; click a heading to fold it. <b>View &gt; Graph Side Panel</b> hides the panel.</p>
+<h3>Drawing and annotation tools on the left toolbar</h3>
+<p>The drawing tools (line, arrow, rectangle, circle or ellipse, polygon, freehand region) share one button at the bottom of the left
+toolbar, and the tools that add to a graph (text, arrow, reference line, confidence ellipse, zoom inset) share the button above it,
+so the toolbar fits in one column. Click a button to use the tool shown on it again; click the small arrow beside it to choose another
+tool, which then becomes the one shown. The same tools are in the <b>Draw</b> and <b>Add</b> sections of the graph's side panel.</p>
+<h3>Formatting single texts</h3>
+<p>Every text in a graph can be formatted on its own, without changing the others: the title, each axis title, the tick labels of
+each axis, the legend title and each legend entry, field names and other texts drawn by the plot, your own text annotations, and
+colour-bar titles. Click a text to select it; a red dashed outline marks it (the outline is never exported). The <b>text format
+bar</b>, under the curve format bar, then shows and changes only that text: its words, font, size, <b>B</b>old, <i>I</i>talic,
+superscript (x&sup2;), subscript (x&#8322;), stacked sub- and superscript, Greek letters (&alpha;&beta;), larger and smaller (A&#8314;,
+A&#8315;), colour, orientation (&#8635;, the angle in degrees) and reset (&#8634;). Double-click a text to put the cursor in its words.</p>
+<p>Superscripts and subscripts are written in the words: <code>SiO_{{2}}</code> gives SiO<sub>2</sub>, <code>Fe^{{3+}}</code> gives
+Fe<sup>3+</sup>, <code>X_{{a}}^{{b}}</code> stacks a subscript and a superscript, <code>\b{{...}}</code> and <code>\i{{...}}</code> make part of a
+text bold or italic. You need not type these: select the words in the field and click a button, or press Ctrl+= (subscript),
+Ctrl+Shift+= (superscript), Ctrl+- (stacked), Ctrl+B, Ctrl+I, Ctrl+G (turns the selected Latin letters into Greek), Ctrl+Shift+&gt; and
+Ctrl+Shift+&lt; (size). With nothing selected, B and I act on the whole text. Tick labels are formatted as a group for each axis, and
+keep their format when you zoom. Each change is one undo step, is saved with the project and appears in exported figures. Right-click
+a text for more (layer, hide, reset all texts).</p>
 <h3>New in 1.30.1: calibration ranges, uncertainties and validation</h3>
 <p>Thermobarometry results now come with checks. A method whose authors state a calibration domain (for example Ti-in-zircon,
 580&ndash;1070 &deg;C; Ti-in-quartz of Thomas et al. 2010, 700&ndash;940 &deg;C and 5&ndash;20 kbar) adds a column saying, for each row, whether the

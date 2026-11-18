@@ -65,9 +65,17 @@ def _round(x, n=0, how=round):
 
 def _fact(x):
     """x! as a float; 171! and up overflow a float, so they are refused before the (slow) exact integer product."""
-    if not np.isfinite(x) or x < 0: raise CellError("#NUM!")
+    if isinstance(x, (bool, np.bool_)) or not np.isfinite(x) or x < 0: raise CellError("#NUM!")
     if x > 170: raise CellError("#NUM!")
     return float(math.factorial(int(x)))
+
+
+def _pow(a, b):
+    """a^b in floating point: an exponent written as an expression, =10^(1000+1), cannot start an endless exact-integer power."""
+    try: r = float(a) ** float(b)
+    except (OverflowError, ZeroDivisionError): raise CellError("#NUM!") from None
+    if isinstance(r, complex) or not np.isfinite(r): raise CellError("#NUM!")
+    return r
 
 
 MAX_FORMULA = 2000  # characters in one cell formula
@@ -335,6 +343,7 @@ class _Concat(ast.NodeTransformer):
     def visit_BinOp(self, node):
         self.generic_visit(node)
         if isinstance(node.op, ast.MatMult): return ast.Call(func=ast.Name(id="CAT", ctx=ast.Load()), args=[node.left, node.right], keywords=[])
+        if isinstance(node.op, ast.Pow): return ast.Call(func=ast.Name(id="POW", ctx=ast.Load()), args=[node.left, node.right], keywords=[])  # float power, see _pow
         return node
 
 
@@ -361,7 +370,7 @@ def compile_cell(text):
     try: tree = ast.parse(src, mode="eval")
     except SyntaxError: raise CellError("#VALUE!") from None
     tree = ast.fix_missing_locations(_Concat().visit(tree))
-    allowed = {"RNG", "REF", "CAT"} | {"F_" + k.replace(".", "_") for k in FUNCS}
+    allowed = {"RNG", "REF", "CAT", "POW"} | {"F_" + k.replace(".", "_") for k in FUNCS}
     for node in ast.walk(tree):
         if not isinstance(node, _OK): raise CellError("#VALUE!")
         if isinstance(node, ast.Name) and node.id not in allowed | {"True", "False"}: raise CellError("#NAME?")
@@ -396,7 +405,7 @@ def evaluate(text, get, n_rows, n_cols, sheets=None):
         if r1 == 0: r1, r2 = 1, source(s)[1]  # whole column A:A
         rows, cols = range(min(r1, r2), max(r1, r2) + 1), range(min(c1, c2), max(c1, c2) + 1)
         return _Range([cell(c, r, s) for c in cols for r in rows], len(rows), len(cols))
-    ns = {"REF": ref, "RNG": rng, "CAT": lambda a, b: _text(a) + _text(b), "True": True, "False": False, "TRUTH": _truth}
+    ns = {"REF": ref, "RNG": rng, "CAT": lambda a, b: _text(a) + _text(b), "POW": _pow, "True": True, "False": False, "TRUTH": _truth}
     ns.update({"F_" + k.replace(".", "_"): f for k, f in FUNCS.items()})
     try:
         out = eval(compile_cell(text), {"__builtins__": {}, **ns})  # safe: only whitelisted names and calls (compile_cell)

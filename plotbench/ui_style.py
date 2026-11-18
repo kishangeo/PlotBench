@@ -12,6 +12,10 @@ def palette(theme):
                 border="#d7dae0", grid="#d9dce2", hover="#eef1f5", header="#f1f3f6", sel="#1f8f8633")
 
 
+def _read(f):
+    with open(f, encoding="utf-8") as h: return h.read()
+
+
 def arrows(theme):
     """Paths of chevron arrows (down, up, right) drawn in the theme's text colour, for combo boxes, spin boxes, tree branches and
     folding headers; Qt draws none, or faint ones, once a style sheet styles those widgets."""
@@ -24,7 +28,7 @@ def arrows(theme):
         svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polyline points="{pts}" fill="none" '
                f'stroke="{col}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
         try:  # a locked or read-only temp folder must not stop the program: the arrows are then simply missing
-            if not os.path.exists(f) or open(f).read() != svg:
+            if not os.path.exists(f) or _read(f) != svg:
                 with open(f, "w") as h: h.write(svg)
         except OSError: pass
         out[name] = f

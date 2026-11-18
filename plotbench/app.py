@@ -47,7 +47,7 @@ from .graphs import (GraphWindow, StyleDialog, LayoutWindow, LayoutDialog, save_
                      set_default_theme, user_dir)
 
 APP = "PlotBench"
-VERSION = "1.30.1"
+VERSION = "1.30.2"
 
 
 class ReportWindow(QTextEdit):
@@ -967,13 +967,18 @@ class Main(QMainWindow):
             if isinstance(v, (float, np.floating)):
                 av = abs(float(v))
                 if av == 0: return "0"
+                if float(v).is_integer() and av < 1e6: return str(int(v))  # 5, not 5.000
                 if 1e-3 <= av < 1e6:  # plain notation in the usual range: 12450, not 1.245e+04
-                    dec = max(0, digits - 1 - int(np.floor(np.log10(av))))
-                    return f"{v:.{dec}f}"
+                    dec = max(0, digits - 1 - int(np.floor(np.log10(av)))); rv = round(float(v), dec)
+                    if rv != 0 and int(np.floor(np.log10(abs(rv)))) != int(np.floor(np.log10(av))):  # 999.96 rounds to 1000.0: one decimal fewer
+                        dec = max(0, digits - 1 - int(np.floor(np.log10(abs(rv)))))
+                    return f"{rv:.{dec}f}"
                 return f"{v:.{digits - 1}e}"
             return esc(v)
-        masked = {r for _, r in getattr(b, "mask", set())}  # masked (rejected) analyses stay out of a publication table
-        df = b.df.drop(index=[i for i in b.df.index if i in masked]).dropna(how="all")
+        df = b.df.copy()  # masked (rejected) values stay out of a publication table; only the masked cells are blanked
+        for c_, r_ in getattr(b, "mask", set()):
+            if c_ in df.columns and 0 <= r_ < len(df): df.iat[r_, df.columns.get_loc(c_)] = np.nan
+        df = df.dropna(how="all")
         num = [np.issubdtype(df[c].dtype, np.number) for c in df.columns]
         lines = [r"% requires \usepackage{booktabs}", r"\begin{table}", r"\centering", r"\caption{" + esc(b.name) + "}",
                  r"\begin{tabular}{" + "".join("r" if n else "l" for n in num) + "}", r"\toprule",
@@ -1064,6 +1069,10 @@ class Main(QMainWindow):
         self.project_path = fn; self.setWindowTitle(f"{APP} {VERSION} - {Path(fn).name}"); self.add_recent(fn); self.clear_dirty()
 
     def _close_all(self):
+        for w in self.windows():  # a redraw still queued for a graph must not run after its canvas is deleted
+            c = getattr(w, "canvas", None)
+            if c is not None and getattr(c, "_draw_pending", False): c._draw_pending = False; c.draw()
+        QCoreApplication.processEvents()
         self._bulk_close = True
         try:
             self.mdi.closeAllSubWindows(); QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)  # really remove closed windows now
@@ -1172,14 +1181,17 @@ class Main(QMainWindow):
             mc_on = QCheckBox("Monte Carlo uncertainty (1σ column)"); mc_rel = QDoubleSpinBox(); mc_rel.setRange(0.1, 50); mc_rel.setValue(2.0)
             mc_rel.setSuffix(" % per analysis"); mc_n = QSpinBox(); mc_n.setRange(50, 5000); mc_n.setValue(500); mc_n.setSuffix(" draws")
             mc_p = QDoubleSpinBox(); mc_p.setRange(0, 20); mc_p.setValue(0.0); mc_p.setPrefix("P ± "); mc_p.setSuffix(" kbar")
-            mc_row = QHBoxLayout(); [mc_row.addWidget(x) for x in (mc_on, mc_rel, mc_n, mc_p)]
+            mc_t = QDoubleSpinBox(); mc_t.setRange(0, 300); mc_t.setValue(0.0); mc_t.setPrefix("T ± "); mc_t.setSuffix(" °C")
+            mc_p.setToolTip("Absolute 1σ of the pressure you give (used only by methods that take P)")
+            mc_t.setToolTip("Absolute 1σ of the temperature, number or column (used only by methods that take T)")
+            mc_row = QHBoxLayout(); [mc_row.addWidget(x) for x in (mc_on, mc_rel, mc_n, mc_p, mc_t)]
             mc_on.setToolTip("Every measured value (columns and oxide analyses) is varied by the relative 1σ error, independently, and the "
                              "method rerun; the column holds the standard deviation of the results. The equation's own calibration error comes on top.")
             bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel); bb.accepted.connect(d.accept); bb.rejected.connect(d.reject)
             lay = QVBoxLayout(d); lay.addWidget(QLabel("Method")); lay.addWidget(pick); lay.addWidget(info); lay.addWidget(form_box, 1); lay.addLayout(mc_row); lay.addWidget(bb)
             if not d.exec(): return
             method = pick.currentText(); inputs = self._tb_values(widgets)
-            if mc_on.isChecked(): mc = {"rel": mc_rel.value() / 100, "n": mc_n.value(), "P (kbar)": mc_p.value(), "T (C), if no column": 0.0}
+            if mc_on.isChecked(): mc = {"rel": mc_rel.value() / 100, "n": mc_n.value(), "P (kbar)": mc_p.value(), "T (C), if no column": mc_t.value()}
             d.deleteLater()  # the dialog and its widgets are not needed any more
         m = TB.METHODS[method]
         real = {str(c): c for c in sh.df.columns}
@@ -1190,18 +1202,20 @@ class Main(QMainWindow):
         cols_in = {k: (real.get(v, v) if isinstance(v, str) else v) for k, v in (inputs or {}).items()}
         extra = ""
         if method in TB.VALID:
-            rng = TB.VALID[method]; flag = TB.in_range(method, vals, {k: v for k, v in cols_in.items() if not isinstance(v, str)}, len(sh.df))
+            given = {k: (sh.arr(v) if isinstance(v, str) else v) for k, v in cols_in.items() if v is not None}  # columns as their values
+            rng = TB.VALID[method]; flag = TB.in_range(method, vals, given, len(sh.df))
             word = "in equilibrium" if rng.get("kind") == "equilibrium" else "in calibration range"
             sh.add_column(f"{m['out']} {word}", np.where(np.isnan(flag), None, np.where(flag == 1, "yes", "no")).astype(object),
                           formula=f"{method}: {rng['ref']}", snap=False)
             nout = int(np.nansum(flag == 0))
             if nout: extra = f"; {nout} rows {'not in equilibrium' if rng.get('kind') == 'equilibrium' else 'outside the calibration range'} ({rng['ref']})"
         if mc:
-            sd = TB.monte_carlo(method, cols_in, sh.arr, oxides, len(sh.df), rel=mc["rel"], n=mc.get("n", 500),
-                                num_sd={k: v for k, v in mc.items() if k not in ("rel", "n")})
+            labels = {i[1] for i in m["inputs"]}  # errors on P or T only for methods that take them
+            num_sd = {k: v for k, v in mc.items() if k not in ("rel", "n") and v and k in labels}
+            sd = TB.monte_carlo(method, cols_in, sh.arr, oxides, len(sh.df), rel=mc["rel"], n=mc.get("n", 500), num_sd=num_sd)
             sh.add_column(f"1s {m['out']} ({m['unit'].replace('deg C', 'C')})", sd, units=m["unit"].replace("deg C", "°C"),
                           formula=f"Monte Carlo, {mc.get('n', 500)} draws, {100 * mc['rel']:g} % relative 1-sigma on each measured input"
-                                  + "".join(f", {k} ± {v:g}" for k, v in mc.items() if k not in ("rel", "n") and v), snap=False, desig="yErr")
+                                  + "".join(f", {k.replace(', if no column', '')} ± {v:g}" for k, v in num_sd.items()), snap=False, desig="yErr")
         sh.model.refresh(); sh.changed(); self.mark_dirty()
         ok = np.isfinite(vals)
         self.statusBar().showMessage(f"{method}: {ok.sum()} values in column {name}" + (f" ({(~ok).sum()} rows blank: inputs missing or outside the calibration, e.g. negative site occupancy)" if (~ok).any() else "") + extra, 12000)

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.30.2 (2026-11-18)
+
+- Every text of a graph can be formatted on its own: title, axis titles, tick labels (per axis), legend title and entries, field
+  names and other plot texts, annotations, colour-bar titles. Click a text to select it (red outline), then use the new text format
+  bar under the curve bar: words, font, size, bold, italic, superscript, subscript, stacked sub- and superscript, Greek letters,
+  larger and smaller, colour, orientation (angle) and reset. Double-click a text to edit its words. Keys in the words field:
+  Ctrl+B, Ctrl+I, Ctrl+= (subscript), Ctrl+Shift+= (superscript), Ctrl+- (stacked), Ctrl+G (Greek), Ctrl+Shift+> and < (size).
+  Formats are saved with the project, undoable, and kept in exported figures.
+- The left (graph tools) toolbar fits in one column: the drawing tools (line, arrow, rectangle, circle, polygon, freehand) share one
+  button, and so do the add-to-graph tools (text, arrow, reference line, confidence ellipse, zoom inset). A click repeats the last
+  tool used; the small arrow beside the button lists the others. Icons on that bar are slightly smaller.
+- Thermobarometers return a blank instead of -273 C or infinity when an input that goes into a logarithm is zero.
+- LaTeX export blanks only masked cells, not whole rows, and writes 5 rather than 5.000 for whole numbers.
+- Calibration-range flags use the temperature column when one is chosen; Monte Carlo treats a temperature column as an absolute
+  error in degrees (new T +- input) and lists only the P or T errors that the method uses.
+- Cell formulas: powers are computed in floating point, so =10^(1000+1) gives #NUM! at once; FACT(TRUE) gives #NUM!.
+- Opening a project right after a graph redraw no longer crashes.
+
 ## 1.30.1 (2026-11-18)
 
 - Thermobarometry: methods with a published calibration domain add a column flagging rows outside it (or out of equilibrium, for the

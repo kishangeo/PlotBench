@@ -13,6 +13,11 @@ K0 = 273.15
 def _a(x): return np.asarray(x, float)
 
 
+def _ln(x):
+    """Natural log that gives NaN, not -inf or a warning, for zero, negative or non-finite input (an empty cell, a zero site fraction)."""
+    with np.errstate(all="ignore"): a = _a(x); return np.log(np.where((a > 0) & np.isfinite(a), a, np.nan))
+
+
 def _log10(x):
     with np.errstate(all="ignore"): return np.log10(np.where(_a(x) > 0, _a(x), np.nan))
 
@@ -58,7 +63,7 @@ def ti_in_quartz_thomas2010(ti_ppm, p_kbar, a_tio2=1.0):
     """Thomas et al. (2010): RT ln X(TiO2, qtz) = -60952 + 1.520 T - 1741 P(kbar) + RT ln aTiO2, X from Ti ppm by weight."""
     x = _a(ti_ppm) * 1e-6 * 60.0843 / 47.867
     with np.errstate(all="ignore"):
-        return (-60952.0 - 1741.0 * _a(p_kbar)) / (R * np.log(x) - 1.520 - R * np.log(_a(a_tio2))) - K0
+        return (-60952.0 - 1741.0 * _a(p_kbar)) / (R * _ln(x) - 1.520 - R * _ln(_a(a_tio2))) - K0
 
 
 # ----------------------------------------------------------------------------- zircon saturation
@@ -80,7 +85,7 @@ def zircon_saturation(zr_melt_ppm, ox, calibration="Watson & Harrison 1983"):
     Watson & Harrison (1983): ln D = -3.80 - 0.85 (M - 1) + 12900/T.  Boehnke et al. (2013): ln D = 10108/T - 1.16 (M - 1) - 1.48."""
     M = m_factor(ox)
     with np.errstate(all="ignore"):
-        lnD = np.log(497644.0 / _a(zr_melt_ppm))
+        lnD = _ln(497644.0 / _a(zr_melt_ppm))
         if calibration.startswith("Boehnke"): return 10108.0 / (lnD + 1.16 * (M - 1) + 1.48) - K0
         return 12900.0 / (lnD + 3.80 + 0.85 * (M - 1)) - K0
 
@@ -90,7 +95,7 @@ def garnet_biotite(mg_grt, fe_grt, mg_bt, fe_bt, p_kbar):
     """Ferry & Spear (1978): T(K) = (2089 + 0.0096 P(bar)) / (0.782 - ln KD), KD = (Mg/Fe)garnet / (Mg/Fe)biotite."""
     with np.errstate(all="ignore"):
         kd = (_a(mg_grt) / _a(fe_grt)) / (_a(mg_bt) / _a(fe_bt))
-        return (2089.0 + 0.0096 * 1000 * _a(p_kbar)) / (0.782 - np.log(kd)) - K0
+        return (2089.0 + 0.0096 * 1000 * _a(p_kbar)) / (0.782 - _ln(kd)) - K0
 
 
 def garnet_cpx(mg_grt, fe_grt, ca_grt, mn_grt, mg_cpx, fe_cpx, p_kbar):
@@ -99,7 +104,7 @@ def garnet_cpx(mg_grt, fe_grt, ca_grt, mn_grt, mg_cpx, fe_cpx, p_kbar):
     with np.errstate(all="ignore"):
         kd = (_a(fe_grt) / _a(mg_grt)) / (_a(fe_cpx) / _a(mg_cpx))
         xca = _a(ca_grt) / (_a(ca_grt) + _a(mg_grt) + _a(fe_grt) + np.nan_to_num(_a(mn_grt)))
-        return (3104.0 * xca + 3030.0 + 10.86 * _a(p_kbar)) / (np.log(kd) + 1.9034) - K0
+        return (3104.0 * xca + 3030.0 + 10.86 * _a(p_kbar)) / (_ln(kd) + 1.9034) - K0
 
 
 # ----------------------------------------------------------------------------- pyroxene thermometers (apfu on 6 O)
@@ -111,7 +116,7 @@ def two_pyroxene_bk(ca_cpx, na_cpx, mg_cpx, fe_cpx, ca_opx, na_opx, mg_opx, fe_o
         cs_c = _a(ca_cpx) / (1 - np.nan_to_num(_a(na_cpx))); cs_o = _a(ca_opx) / (1 - np.nan_to_num(_a(na_opx)))
         k = (1 - cs_c) / (1 - cs_o)
         xfe_c = _a(fe_cpx) / (_a(fe_cpx) + _a(mg_cpx)); xfe_o = _a(fe_opx) / (_a(fe_opx) + _a(mg_opx))
-        return (23664.0 + (24.9 + 126.3 * xfe_c) * _a(p_kbar)) / (13.38 + np.log(k) ** 2 + 11.59 * xfe_o) - K0
+        return (23664.0 + (24.9 + 126.3 * xfe_c) * _a(p_kbar)) / (13.38 + _ln(k) ** 2 + 11.59 * xfe_o) - K0
 
 
 def a_enstatite(si, al, ti, cr, fe3, fe2, mg, mn, ca, na):
@@ -136,18 +141,18 @@ def _px_k(c, o):
 def two_pyroxene_wells(c, o):
     """Wells (1977): T(K) = 7341 / (3.355 + 2.44 XFe(opx) - ln K), K = a(En, cpx) / a(En, opx)."""
     k, xfe = _px_k(c, o)
-    with np.errstate(all="ignore"): return 7341.0 / (3.355 + 2.44 * xfe - np.log(k)) - K0
+    with np.errstate(all="ignore"): return 7341.0 / (3.355 + 2.44 * xfe - _ln(k)) - K0
 
 
 def two_pyroxene_wood_banno(c, o):
     """Wood & Banno (1973): T(K) = -10202 / (ln K - 7.65 XFe(opx) + 3.88 XFe(opx)^2 - 4.6), K = a(En, cpx) / a(En, opx)."""
     k, xfe = _px_k(c, o)
-    with np.errstate(all="ignore"): return -10202.0 / (np.log(k) - 7.65 * xfe + 3.88 * xfe ** 2 - 4.6) - K0
+    with np.errstate(all="ignore"): return -10202.0 / (_ln(k) - 7.65 * xfe + 3.88 * xfe ** 2 - 4.6) - K0
 
 
 def ca_in_opx_bk(ca_opx, p_kbar):
     """Brey & Kohler (1990) Ca-in-orthopyroxene thermometer (opx coexisting with cpx): T(K) = (6425 + 26.4 P) / (-ln Ca(opx) + 1.843)."""
-    with np.errstate(all="ignore"): return (6425.0 + 26.4 * _a(p_kbar)) / (-np.log(_a(ca_opx)) + 1.843) - K0
+    with np.errstate(all="ignore"): return (6425.0 + 26.4 * _a(p_kbar)) / (-_ln(_a(ca_opx)) + 1.843) - K0
 
 
 # ----------------------------------------------------------------------------- amphibole-plagioclase (Holland & Blundy 1994)
@@ -177,7 +182,7 @@ def holland_blundy_a(si, al, ti, fe3, fe2, mg, mn, ca, na, k, an_plag, p_kbar):
     with np.errstate(all="ignore"):
         q = 27 * s["XvA"] * s["XSiT1"] * xab / (256 * s["XNaA"] * s["XAlT1"])  # albite is the product of reaction A
         return (-76.95 + 0.79 * P + yab + 39.4 * s["XNaA"] + 22.4 * s["XKA"] + (41.5 - 2.89 * P) * s["XAlM2"]) / \
-            (-0.0650 - RKJ * np.log(q)) - K0
+            (-0.0650 - RKJ * _ln(q)) - K0
 
 
 def holland_blundy_b(si, al, ti, fe3, fe2, mg, mn, ca, na, k, an_plag, p_kbar):
@@ -190,7 +195,7 @@ def holland_blundy_b(si, al, ti, fe3, fe2, mg, mn, ca, na, k, an_plag, p_kbar):
     with np.errstate(all="ignore"):
         q = 27 * s["XNaM4"] * s["XSiT1"] * xan / (64 * s["XCaM4"] * s["XAlT1"] * xab)
         return (78.44 + yaban - 33.6 * s["XNaM4"] - (66.8 - 2.92 * P) * s["XAlM2"] + 78.5 * s["XAlT1"] + 9.4 * s["XNaA"]) / \
-            (0.0721 - RKJ * np.log(q)) - K0
+            (0.0721 - RKJ * _ln(q)) - K0
 
 
 # ----------------------------------------------------------------------------- garnet-orthopyroxene Al barometers
@@ -217,7 +222,7 @@ def harley_green_1982(al_opx, mg_opx, fe_opx, ca_gt, mg_gt, fe_gt, t_c):
     with np.errstate(all="ignore"):
         xfe_o = _z(fe_opx) / (_z(fe_opx) + _z(mg_opx)); xca, xfe, _, _, _ = gt_sites(ca_gt, mg_gt, fe_gt, mn_in_sum=False)
         k = xal * (1 - xal) / (1 - xca) ** 3; dv = -(183.3 + 178.98 * xal * (1 - xal))
-        return ((R_CAL * np.log(k) - 2.93) * T + 5650 + 5157 * (1 - xal) * (1 - 2 * xal) * xfe_o - 6300 * (xca * xfe + xca ** 2)) / dv
+        return ((R_CAL * _ln(k) - 2.93) * T + 5650 + 5157 * (1 - xal) * (1 - 2 * xal) * xfe_o - 6300 * (xca * xfe + xca ** 2)) / dv
 
 
 def _opx_ng(al, cr, ti, na, ca, mn, mg, fe):
@@ -236,7 +241,7 @@ def nickel_green_1985(opx, gt, t_c):
     xal, m1, m2, xmg1, xfe1 = _opx_ng(opx["al"], opx["cr"], opx["ti"], opx["na"], opx["ca"], opx["mn"], opx["mg"], opx["fe"])
     xca, xfe, _, xalg, xcrg = gt_sites(gt["ca"], gt["mg"], gt["fe"], gt["mn"], gt["al"], gt["cr"])
     with np.errstate(all="ignore"):
-        lnk = np.log((1 - xca) ** 3 * xalg ** 2 / (m1 * m2 ** 2 * xal))
+        lnk = _ln((1 - xca) ** 3 * xalg ** 2 / (m1 * m2 ** 2 * xal))
         brace = (-R_CAL * T * lnk - 9000 * xca ** 2 - 3400 * (2 * xcrg ** 2 - xmg1 * _z(opx["cr"])) - xca * xcrg * (90853 - 52.1 * T)
                  - 7590 * xfe * xca + 5157 * xmg1 * xfe1 + 6047 - 3.23 * T)
         return brace / -(183.3 + 178.98 * xal * (1 - xal))
@@ -255,7 +260,7 @@ def brey_kohler_1990_p(opx, gt, t_c):
         xmf = mg / (mg + fe); xmg1, xfe1 = m1 * xmf, m1 * (1 - xmf)
         xca, xfe, _, xalg, xcrg = gt_sites(gt["ca"], gt["mg"], gt["fe"], gt["mn"], gt["al"], gt["cr"])
         kd = (1 - xca) ** 3 * xalg ** 2 / (m1 * m2 ** 2 * xal_ts)
-        c1 = (-R * T * np.log(kd) - 5510 + 88.91 * T - 19 * T ** 1.2 + 3 * xca ** 2 * 82458 + xmg1 * xfe1 * (80942 - 46.7 * T)
+        c1 = (-R * T * _ln(kd) - 5510 + 88.91 * T - 19 * T ** 1.2 + 3 * xca ** 2 * 82458 + xmg1 * xfe1 * (80942 - 46.7 * T)
               - 3 * xfe * xca * 17793 - xca * xcrg * (1.164e6 - 420.4 * T) - xfe * xcrg * (-1.25e6 + 565 * T))
         c2 = -0.832 - 8.78e-5 * (T - 298) + 3 * xca ** 2 * 3.305 - xca * xcrg * 13.45 + xfe * xcrg * 10.5
         c3 = 16.6e-4
@@ -633,8 +638,11 @@ VALID = {
 
 def in_range(method, values, inputs, n_rows):
     """Per row: 1.0 inside the method's calibration domain (or equilibrium window), 0.0 outside, NaN when there is no result or no
-    recorded range. inputs: the numbers / per-row arrays given to the method (e.g. P)."""
-    rng = VALID.get(method); vals = np.asarray(values, float)
+    recorded range. inputs: the numbers or per-row arrays given to the method (e.g. P); a temperature column, when one is used,
+    stands for the single temperature value."""
+    rng = VALID.get(method); vals = np.asarray(values, float); inputs = dict(inputs)
+    tc = inputs.get("T (C) column")
+    if tc is not None and not isinstance(tc, str) and np.size(tc) > 1: inputs["T (C), if no column"] = tc
     if rng is None: return np.full(len(vals), np.nan)
     ok = np.isfinite(vals) & (vals >= rng["out"][0]) & (vals <= rng["out"][1])
     for label, (lo, hi) in ((k, v) for k, v in rng.items() if isinstance(v, tuple) and k != "out"):
@@ -650,10 +658,17 @@ def monte_carlo(method, columns, sheet_arr, sheet_oxides, n_rows=None, rel=0.02,
     of the uncertainty; the calibration error of the equation (in the method notes) comes on top."""
     rs = np.random.default_rng(seed); num_sd = num_sd or {}; out = []
     base_ox = {}
+    # state variables given as columns (a temperature column) carry an absolute error, as the numbers do, never a relative one
+    absolute = {columns[k]: sd for k, sd in num_sd.items() if isinstance(columns.get(k), str)}
+    if isinstance(columns.get("T (C) column"), str): absolute[columns["T (C) column"]] = num_sd.get("T (C), if no column", 0.0)
 
     def noisy(a): a = np.asarray(a, float); return a * (1 + rel * rs.standard_normal(a.shape))
+
+    def column(c):
+        a = np.asarray(sheet_arr(c), float)
+        return a + absolute[c] * rs.standard_normal(a.shape) if c in absolute else noisy(a)
     for _ in range(int(n)):
-        arr = lambda c: noisy(sheet_arr(c))
+        arr = column
 
         def ox(prefix=False):
             key = repr(prefix)
@@ -733,12 +748,12 @@ def _demo():
     assert ti_in_quartz_thomas2010(50, 10.0) > t                                   # higher P, higher T for the same Ti
     ox = {"SiO2": [72.0], "Al2O3": [14.0], "CaO": [1.5], "Na2O": [3.5], "K2O": [4.5], "FeO": [2.0], "MgO": [0.5], "TiO2": [0.3]}
     M = m_factor(ox)[0]; assert 1.0 < M < 1.6, M
-    tw = zircon_saturation([150], ox)[0]; assert near(tw, 12900 / (np.log(497644 / 150) + 3.8 + 0.85 * (M - 1)) - K0) and 750 < tw < 820, tw
-    tb = zircon_saturation([150], ox, "Boehnke")[0]; assert near(tb, 10108 / (np.log(497644 / 150) + 1.16 * (M - 1) + 1.48) - K0)
+    tw = zircon_saturation([150], ox)[0]; assert near(tw, 12900 / (_ln(497644 / 150) + 3.8 + 0.85 * (M - 1)) - K0) and 750 < tw < 820, tw
+    tb = zircon_saturation([150], ox, "Boehnke")[0]; assert near(tb, 10108 / (_ln(497644 / 150) + 1.16 * (M - 1) + 1.48) - K0)
     kd = (0.4 / 2.2) / (1.2 / 1.3); tgb = garnet_biotite(0.4, 2.2, 1.2, 1.3, 5.0)
-    assert near(tgb, (2089 + 48) / (0.782 - np.log(kd)) - K0) and 550 < tgb < 700, tgb
+    assert near(tgb, (2089 + 48) / (0.782 - _ln(kd)) - K0) and 550 < tgb < 700, tgb
     tgc = garnet_cpx(0.9, 1.5, 0.6, 0.05, 0.8, 0.2, 15.0); kd = (1.5 / 0.9) / (0.2 / 0.8); xca = 0.6 / 3.05
-    assert near(tgc, (3104 * xca + 3030 + 162.9) / (np.log(kd) + 1.9034) - K0) and 700 < tgc < 950, tgc
+    assert near(tgc, (3104 * xca + 3030 + 162.9) / (_ln(kd) + 1.9034) - K0) and 700 < tgc < 950, tgc
     assert near(al_in_hornblende(1.5), -3.01 + 4.76 * 1.5) and near(al_in_hornblende(1.5, "Mutch et al. 2016"), 0.5 + 0.4965 + 2.23875)
     for name, m in METHODS.items(): assert {"out", "unit", "fn", "inputs", "eq", "ref"} <= set(m), name
     cols = ["Sample", "TiO2", "Ti (ppm)", "Zr", "Grt Mg", "Grt Fe", "Bt Mg", "Bt Fe", "Al (apfu)"]
@@ -748,14 +763,14 @@ def _demo():
     # two pyroxenes of a granulite at 8 kbar (hand-worked: 827 C) and the amphibole-plagioclase pair of a tonalite at 5 kbar
     assert near(two_pyroxene_bk(0.85, 0.02, 0.6, 0.257, 0.03, 0.005, 1.1, 0.733, 8.0), 827.0, 1.5)
     assert two_pyroxene_bk(0.80, 0.02, 0.6, 0.257, 0.03, 0.005, 1.1, 0.733, 8.0) > two_pyroxene_bk(0.85, 0.02, 0.6, 0.257, 0.03, 0.005, 1.1, 0.733, 8.0)
-    assert near(ca_in_opx_bk(0.03, 8.0), 6636.2 / (-np.log(0.03) + 1.843) - K0)
+    assert near(ca_in_opx_bk(0.03, 8.0), 6636.2 / (-_ln(0.03) + 1.843) - K0)
     cpx = dict(si=2.0, al=0, ti=0, cr=0, fe3=0, fe2=0.257, mg=0.6, mn=0, ca=0.85, na=0.02)
     opx = dict(si=2.0, al=0, ti=0, cr=0, fe3=0, fe2=0.733, mg=1.1, mn=0, ca=0.03, na=0.005)
     a_c = (0.6 / 0.857) ** 2 * (1 - 0.87); assert near(a_enstatite(**cpx), a_c, 1e-9)          # XMg(M1) XMg(M2) by hand
     tw, twb = two_pyroxene_wells(cpx, opx), two_pyroxene_wood_banno(cpx, opx)
     kk = a_c / ((1.1 / 1.833) ** 2 * (1 - 0.035)); xf = 0.733 / 1.833
-    assert near(tw, 7341 / (3.355 + 2.44 * xf - np.log(kk)) - K0) and near(tw, 945.0, 1.5), tw   # hand-worked: about 945 C
-    assert near(twb, -10202 / (np.log(kk) - 7.65 * xf + 3.88 * xf ** 2 - 4.6) - K0) and near(twb, 895.0, 1.5), twb  # about 895 C
+    assert near(tw, 7341 / (3.355 + 2.44 * xf - _ln(kk)) - K0) and near(tw, 945.0, 1.5), tw   # hand-worked: about 945 C
+    assert near(twb, -10202 / (_ln(kk) - 7.65 * xf + 3.88 * xf ** 2 - 4.6) - K0) and near(twb, 895.0, 1.5), twb  # about 895 C
     al_c = dict(cpx, si=1.9, al=0.2)  # 0.1 AlVI on M1 lowers a(En, cpx), so K and the Wells T change
     assert abs(a_enstatite(**al_c) - a_c * 0.9) < 1e-9 and two_pyroxene_wells(al_c, opx) != tw
     assert abs(a_enstatite(**dict(cpx, si=0, al=0.2)) - a_c * 0.8) < 1e-9  # no Si given: all Al on M1
@@ -763,9 +778,9 @@ def _demo():
     ta, tb_ = holland_blundy_a(**hb, an_plag=0.4, p_kbar=5.0), holland_blundy_b(**hb, an_plag=40, p_kbar=5.0)
     q_a = 27 * 0.6 * 0.7 * 0.6 / (256 * 0.25 * 0.3)  # X_ab = 0.6 in the logarithm (Holland & Blundy 1994, p. 441)
     num_a = -76.95 + 0.79 * 5 + 0 + 39.4 * 0.25 + 22.4 * 0.15 + (41.5 - 2.89 * 5) * 0.15
-    assert near(ta, num_a / (-0.0650 - RKJ * np.log(q_a)) - K0) and near(tb_, 751.0, 1.5), (ta, tb_)
+    assert near(ta, num_a / (-0.0650 - RKJ * _ln(q_a)) - K0) and near(tb_, 751.0, 1.5), (ta, tb_)
     assert near(holland_blundy_a(**hb, an_plag=0.6, p_kbar=5.0), (num_a - 76.95 * 0 + 12.0 * 0.6 ** 2 - 3.0) /
-                (-0.0650 - RKJ * np.log(27 * 0.6 * 0.7 * 0.4 / (256 * 0.25 * 0.3))) - K0)  # X_ab 0.4 < 0.5: Yab = 12.0 (1 - X_ab)^2 - 3
+                (-0.0650 - RKJ * _ln(27 * 0.6 * 0.7 * 0.4 / (256 * 0.25 * 0.3))) - K0)  # X_ab 0.4 < 0.5: Yab = 12.0 (1 - X_ab)^2 - 3
     s = hb_sites(**hb); assert near(s["XvA"], 0.6, 1e-9) and near(s["XNaA"], 0.25, 1e-9) and near(s["XAlM2"], 0.15, 1e-9)
     # Harley & Green (1982) Fig. 2: Al isopleths for opx XMg = 0.50 with Fe-Mg garnet; 2.5 % and 5 % Al in M1 at 1000 C plot at about
     # 27 and 19 kbar

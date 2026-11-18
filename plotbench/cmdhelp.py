@@ -126,7 +126,7 @@ MORE = {
     "Convert Worksheet XYZ to Matrix (gridding)": "Grid scattered X, Y, Z data into a matrix (linear, cubic, nearest, Shepard or thin-plate spline).",
     "Matrix Arithmetic (A op B or number)": "Add, subtract, multiply, divide or power two matrices, or a matrix and a number.",
     "Crop Matrix": "Keep a rectangular part of the matrix.",
-    "Graph Properties (titles, axes, colours, fonts)": "Titles, axes, scales, ranges, ticks, colours, symbols, fonts and export size, with live preview (Ctrl+G).",
+    "Graph Properties (titles, axes, colours, fonts)": "Titles, axes, scales, ranges, ticks, colours, symbols, fonts and export size for the whole graph, with live preview (Ctrl+G). To format one text on its own, click it and use the text format bar.",
     "Graph properties": "Titles, axes, colours, symbols and fonts, with live preview.",
     "Apply Template / Theme": "Give the active graph the look of a saved template or built-in theme.",
     "Save Graph Format as Template": "Save the look of the active graph to reuse on others.",

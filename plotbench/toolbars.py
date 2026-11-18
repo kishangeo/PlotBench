@@ -276,6 +276,7 @@ def build_toolbars(main, theme="light"):
     top.addWidget(sw); main.theme_switch = sw
 
     left = bar("Graph tools", Qt.LeftToolBarArea, "tb_left")
+    left.setIconSize(QSize(18, 18)); left.setStyleSheet("QToolButton { padding: 2px; margin: 0px; } QToolBar { spacing: 1px; }")  # one column on a laptop screen
 
     def graph_toggle(attr):
         g = main.need_graph()
@@ -288,18 +289,37 @@ def build_toolbars(main, theme="light"):
 
     for ic, tip, slot in (("zoom", "Zoom (on the active graph)", lambda: nav("zoom")), ("pan", "Pan (on the active graph)", lambda: nav("pan")),
                           ("reader", "Data reader", lambda: graph_toggle("act_reader")), ("region", "Region tools: drag an X range", lambda: graph_toggle("act_region")),
-                          ("text", "Add text", main.add_text), ("arrow", "Add arrow", main.add_arrow), ("hline", "Add reference line", main.add_refline),
-                          ("ellipse", "Add confidence ellipse", main.add_ellipse), ("props", "Graph properties", main.graph_props),
+                          ("props", "Graph properties", main.graph_props),
                           ("digitize", "Digitizer", main.digitize), ("edit", "Edit plot (type, columns, groups, panels)", main.edit_plot),
-                          ("inset", "Add zoom inset (drag a rectangle)", main.zoom_inset), ("group", "Group samples by a column", main.group_samples),
+                          ("group", "Group samples by a column", main.group_samples),
                           ("panels", "Split into panels", main.split_panels), ("template", "Apply template / theme", main.apply_template),
                           ("dup", "Duplicate graph", main.dup_graph), ("pdf", "Export all graphs to one PDF", main.export_pdf_book), ("brush", "Copy this graph's format to all graphs", main.copy_format_all)):
         add(left, _icon(draw_tool(ic), theme), tip, slot)
     left.addSeparator()
-    for ic, tip, kind in (("line", "Draw a line", "line"), ("draw_arrow", "Draw an arrow (head, colour and width editable)", "arrow2"), ("rectshape", "Draw a rectangle", "rect"),
-                          ("circle", "Draw a circle / ellipse", "circle"), ("polygon", "Draw a polygon (click corners, double-click to finish)", "polygon"),
-                          ("freehand", "Draw a freehand region", "region")):
-        add(left, _icon(draw_tool(ic), theme), tip, lambda k=kind: main.draw_shape(k))
+    from PySide6.QtWidgets import QToolButton, QMenu
+
+    def split_button(name, label, items):
+        """One button for a group of tools, as in Origin: a click repeats the last tool used, the small arrow opens the list."""
+        btn = QToolButton(left); menu = QMenu(btn); btn.setPopupMode(QToolButton.MenuButtonPopup); btn.setMenu(menu)
+
+        def pick(act): btn.setDefaultAction(act); btn.setToolTip(act.toolTip() + "  (arrow: the other tools)")
+        for ic, tip, slot in items:
+            act = menu.addAction(_icon(draw_tool(ic), theme), tip.split(" (")[0]); act.setToolTip(tip)
+            act.triggered.connect(lambda checked=False, f=slot, a=act: (pick(a), main.safe(f)))
+        st = getattr(main, "settings", None) or {}; acts = menu.actions(); last = st.get(name)
+        pick(acts[last] if isinstance(last, int) and 0 <= last < len(acts) else acts[0])
+        menu.triggered.connect(lambda a: main.settings.__setitem__(name, acts.index(a)) if getattr(main, "settings", None) is not None else None)
+        wa = left.addWidget(btn); wa.setText(label); wa.setToolTip(label); return btn
+    main.add_button = split_button("last_add_tool", "Add to graph: text, arrow, reference line, confidence ellipse, zoom inset",
+                                   (("text", "Add text", main.add_text), ("arrow", "Add arrow", main.add_arrow),
+                                    ("hline", "Add reference line", main.add_refline), ("ellipse", "Add confidence ellipse", main.add_ellipse),
+                                    ("inset", "Add zoom inset (drag a rectangle)", main.zoom_inset)))
+    shapes = (("line", "Draw a line", "line"), ("draw_arrow", "Draw an arrow (head, colour and width editable)", "arrow2"), ("rectshape", "Draw a rectangle", "rect"),
+              ("circle", "Draw a circle / ellipse", "circle"), ("polygon", "Draw a polygon (click corners, double-click to finish)", "polygon"),
+              ("freehand", "Draw a freehand region", "region"))
+    shape_btn = split_button("last_shape_tool", "Draw shapes: line, arrow, rectangle, circle, polygon, freehand",
+                             [(ic, tip, (lambda k=kind: main.draw_shape(k))) for ic, tip, kind in shapes])
+    main.shape_button = shape_btn
 
     bottom = bar("Plot types", Qt.BottomToolBarArea, "tb_bottom")
     add(bottom, _icon(draw_plot("Contour (XYZ)"), theme), "Colour-mapped scatter (third column as colour, with a colour bar)", lambda: main.plot("Color-mapped Scatter"))

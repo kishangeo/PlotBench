@@ -123,7 +123,7 @@ def apply_post(fig, st):
         if pos and leg is not None and st["legend"] != "none":  # where the user dragged it (lower-left corner, axes fraction)
             leg.set_bbox_to_anchor(None); leg.set_loc((float(pos[0]), float(pos[1])))
     _point_overrides(axes, st)
-    _text_overrides(axes, st)
+    _text_overrides(fig, axes, st)
 
 
 def _data_lines(ax): return [ln for ln in ax.get_lines() if not ln.get_label().startswith("_")]
@@ -228,19 +228,91 @@ def _break(spec):
 TEXT_Z = {"front": 10.0, "middle": 3.0, "back": 0.5}  # over points / above lines and fields, under points / under everything
 
 
-def _text_overrides(axes, st):
-    """Plot texts moved, restyled, re-layered or hidden by the user: style['texts'] = {key: {pos, z, size, color, text, hide}}."""
+TICKS = ("@xticks", "@yticks", "@zticks")
+
+
+def text_targets(fig):
+    """[(key, [texts], words)] of every text of a figure that can be formatted on its own: title, axis titles, tick labels (one group
+    per axis), legend title and entries, plot texts (field names ...), annotations, colour-bar titles and figure texts. Keys are
+    stable between redraws; words are the text before any edit by the user."""
+    out, plots = [], [a for a in fig.axes if a.get_label() != "<colorbar>" and not hasattr(a, "_colorbar")]
+    words = lambda t: getattr(t, "_pb_words", t.get_text())
+    for ai, a in enumerate(plots):
+        for tag, t in (("@title", a.title), ("@ltitle", getattr(a, "_left_title", None)), ("@rtitle", getattr(a, "_right_title", None)),
+                       ("@xlabel", a.xaxis.label), ("@ylabel", a.yaxis.label), ("@zlabel", getattr(getattr(a, "zaxis", None), "label", None))):
+            if t is not None and (t.get_text().strip() or hasattr(t, "_pb_words")): out.append((f"{ai}|{tag}", [t], words(t)))
+        for tag, axis in (("@xticks", a.xaxis), ("@yticks", a.yaxis), ("@zticks", getattr(a, "zaxis", None))):
+            if axis is None: continue
+            labs = [tk.label1 for tk in axis.get_major_ticks()] + [tk.label2 for tk in axis.get_major_ticks()]
+            labs = [t for t in labs if t.get_visible() and t.get_text().strip()] or [tk.label1 for tk in axis.get_major_ticks()]
+            if labs: out.append((f"{ai}|{tag}", labs, ""))
+        leg = a.get_legend()
+        if leg is not None:
+            if leg.get_title().get_text().strip(): out.append((f"{ai}|@legtitle", [leg.get_title()], words(leg.get_title())))
+            for i, t in enumerate(leg.get_texts()): out.append((f"{ai}|@legend|{i}", [t], words(t)))
+        out += [(k, [t], words(t)) for k, t in _text_keys(a, ai)]
+        for t in a.texts:
+            gid = str(t.get_gid() or "")
+            if gid.startswith("pbann:") and gid != "pbann:-1": out.append((f"@ann|{gid[6:]}", [t], words(t)))
+    for ci, a in enumerate(x for x in fig.axes if x not in plots):
+        for tag, t in (("@ylabel", a.yaxis.label), ("@xlabel", a.xaxis.label)):
+            if t.get_text().strip() or hasattr(t, "_pb_words"): out.append((f"cb{ci}|{tag}", [t], words(t)))
+        for tag, axis in (("@yticks", a.yaxis), ("@xticks", a.xaxis)):
+            labs = [tk.label1 for tk in axis.get_major_ticks()] + [tk.label2 for tk in axis.get_major_ticks()]
+            labs = [t for t in labs if t.get_visible() and t.get_text().strip()]
+            if labs: out.append((f"cb{ci}|{tag}", labs, ""))
+    sup = getattr(fig, "_suptitle", None)
+    if sup is not None and sup.get_text().strip(): out.append(("@suptitle", [sup], words(sup)))
+    seen = {}
+    for t in getattr(fig, "texts", []):
+        if t is sup or not t.get_text().strip(): continue
+        w = words(t); n = seen.get(w, 0); seen[w] = n + 1; out.append((f"@fig|{w}|{n}", [t], w))
+    return out
+
+
+def _ticks_style(axis, ov):
+    """Tick-label formatting set on the axis, so that ticks made later (zoom, pan) look the same."""
+    kw = {}
+    if "size" in ov: kw["labelsize"] = float(ov["size"])
+    if "color" in ov: kw["labelcolor"] = ov["color"]
+    if "rotation" in ov: kw["labelrotation"] = float(ov["rotation"])
+    if ov.get("family"): kw["labelfontfamily"] = ov["family"]
+    if ov.get("hide"): kw.update(dict(labelbottom=False, labeltop=False) if axis.axis_name == "x" else dict(labelleft=False, labelright=False))
+    try: axis.set_tick_params(which="both", **kw)
+    except (TypeError, ValueError): kw.pop("labelfontfamily", None); axis.set_tick_params(which="both", **kw)
+    for tk in axis.get_major_ticks() + axis.get_minor_ticks():  # new ticks copy their properties from these
+        for t in (tk.label1, tk.label2):
+            if "bold" in ov: t.set_fontweight("bold" if ov["bold"] else "normal")
+            if "italic" in ov: t.set_fontstyle("italic" if ov["italic"] else "normal")
+
+
+def _text_overrides(fig, axes, st):
+    """Texts edited, moved, restyled, re-layered or hidden by the user, each on its own:
+    style['texts'] = {key: {text, size, family, bold, italic, color, rotation, pos, z, hide}} (keys from text_targets)."""
+    from .textfmt import rich
     tov = st.get("texts") or {}
     if not tov: return
-    for ai, a in enumerate(axes):
-        for key, t in _text_keys(a, ai):
-            ov = tov.get(key)
-            if not ov: continue
+    for key, arts, _ in text_targets(fig):
+        ov = tov.get(key)
+        if not ov: continue
+        if key.endswith(TICKS):
+            head = key.split("|")[0]; cbs = [x for x in fig.axes if x not in axes]
+            a = (cbs[int(head[2:])] if head.startswith("cb") and int(head[2:]) < len(cbs) else
+                 axes[int(head)] if head.isdigit() and int(head) < len(axes) else None)
+            if a is not None: _ticks_style({"@xticks": a.xaxis, "@yticks": a.yaxis, "@zticks": getattr(a, "zaxis", a.yaxis)}[key[key.index("@"):]], ov)
+            continue
+        for t in arts:
+            if "text" in ov:
+                if not hasattr(t, "_pb_words"): t._pb_words = t.get_text()
+                t.set_text(rich(ov["text"]))
             if "pos" in ov: t.set_position(tuple(ov["pos"]))
             if "z" in ov: t.set_zorder(TEXT_Z.get(ov["z"], 3.0))
             if "size" in ov: t.set_fontsize(float(ov["size"]))
+            if ov.get("family"): t.set_fontfamily(ov["family"])
+            if "bold" in ov: t.set_fontweight("bold" if ov["bold"] else "normal")
+            if "italic" in ov: t.set_fontstyle("italic" if ov["italic"] else "normal")
             if "color" in ov: t.set_color(ov["color"])
-            if "text" in ov: t.set_text(ov["text"])
+            if "rotation" in ov: t.set_rotation(float(ov["rotation"]))
             if ov.get("hide"): t.set_visible(False)
 
 
@@ -328,7 +400,7 @@ class _AspectHost(QWidget):
         return r
 
     def resizeEvent(self, ev):
-        w, h = self.width(), self.height(); r = self.ratio(); cw = w
+        w, h = max(self.width(), 60), max(self.height(), 60); r = self.ratio(); cw = w  # never an empty canvas (Agg cannot draw 0 px)
         if r and w > h * r + 150: cw = int(h * r)  # wide window: keep the shape, the rest is the shortcut panel
         self.g.canvas.setGeometry(0, 0, cw, h)
         if w - cw >= 150 and (getattr(self.g.main, "settings", None) or {}).get("graph_panel", True):
@@ -425,7 +497,9 @@ class GraphWindow(QWidget):
         self.canvas.mpl_connect("scroll_event", self._wheel)
         from .formatbar import FormatBar
         self.fmt = FormatBar(self); self.series_lines, self.series_names = [], []
-        self.host = _AspectHost(self); lay.addWidget(tb); lay.addWidget(self.fmt); lay.addWidget(self.host, 1)
+        from .textfmt import make_bar
+        self.tfmt = make_bar(self); self._tsel = None
+        self.host = _AspectHost(self); lay.addWidget(tb); lay.addWidget(self.fmt); lay.addWidget(self.tfmt); lay.addWidget(self.host, 1)
         self.fits = []; self.history = []; self.redo_stack = []; self.span = None; self.rows = np.array([], int)
         self.setAcceptDrops(True)
 
@@ -743,6 +817,7 @@ class GraphWindow(QWidget):
         self.series_lines, self.series_names = arts, names
         self._refresh_curves()
         if hasattr(self, "fmt"): self.fmt.refresh()
+        if hasattr(self, "tfmt"): self.select_text(self._tsel, redraw=False)
         self._make_draggable()
         self.span = None
         if self.act_region.isChecked() and self.fig.axes and self.fig.axes[0].name == "rectilinear" and self.spec.get("source") != "matrix":
@@ -803,6 +878,10 @@ class GraphWindow(QWidget):
 
     def _set_text(self, key, **kw):
         """Change one plot text's override (one undo step). reset=True forgets it; reset_all / show_all act on every text."""
+        if key and key.startswith("@ann|") and "text" in kw:  # a text annotation keeps its words in the annotation itself
+            i = int(key[5:]); anns = self.spec.get("annotations", [])
+            if i < len(anns): self.snapshot(); anns[i]["text"] = kw.pop("text"); self.spec["style"].get("texts", {}).get(key, {}).pop("text", None)
+            if not kw: self.draw(); self.main.mark_dirty(); return
         st = dict(self.spec["style"]); tx = {k: dict(v) for k, v in st.get("texts", {}).items()}
         if kw.pop("reset_all", False): tx = {}
         elif kw.pop("show_all", False):
@@ -817,7 +896,8 @@ class GraphWindow(QWidget):
         m = QMenu(self); m.addSection(f"Text: {t.get_text()[:30]}")
 
         def edit():
-            s, ok = QInputDialog.getMultiLineText(self, "Edit text", "Text:", t.get_text())
+            cur = self._text_target(key); old = (cur[2].get("text", cur[3]) if cur else t.get_text())
+            s, ok = QInputDialog.getMultiLineText(self, "Edit text", "Text (SiO_{2}, Fe^{3+}, \b{bold}, \i{italic}):", old)
             if ok: self._set_text(key, text=s)
 
         def size():
@@ -873,8 +953,8 @@ class GraphWindow(QWidget):
         if ev.button != 3 or self.act_region.isChecked() or self.act_reader.isChecked() or getattr(self, "_drawing", None): return
         sh = self._shape_at(ev)
         if sh is not None: return self.edit_shape(sh[0])
-        th = self._text_at(ev)
-        if th is not None: return self._text_menu(*th)
+        th = self._text_at(ev, any_text=True)
+        if th is not None: self.select_text(th[0]); return self._text_menu(*th)
         hit = self._nearest_point(ev)
         if hit is None:
             tx = self.spec["style"].get("texts", {})
@@ -927,14 +1007,6 @@ class GraphWindow(QWidget):
         from PySide6.QtWidgets import QInputDialog
         sh = self._shape_at(ev)
         if sh is not None: return self.edit_shape(sh[0])
-        for ax in self.fig.axes:
-            for t in ax.texts:
-                gid = str(t.get_gid() or "")
-                if gid.startswith("pbann:") and t.contains(ev)[0]:
-                    i = int(gid[6:]); a = self.spec["annotations"][i]
-                    txt, ok = QInputDialog.getMultiLineText(self, "Edit text", "Text:", a.get("text", ""))
-                    if ok: self.snapshot(); a["text"] = txt; self.draw(); self.main.mark_dirty()
-                    return
         for a in self._plot_axes():  # a sample group in the legend of a geochemistry diagram
             leg = a.get_legend()
             if leg is None or "groups" not in (self.spec.get("extra") or {}) and not any(str(l.get_gid() or "").startswith("pbgroup:") for l in a.lines): continue
@@ -951,6 +1023,11 @@ class GraphWindow(QWidget):
                 j = self.fmt.series.findData(str(i))
                 if j >= 0: self.fmt.series.setCurrentIndex(j)
                 self.main.statusBar().showMessage(f"Selected curve {i + 1}: {self.series_names[i]} (format bar)", 5000); return
+        hit = self._text_at(ev, any_text=True)
+        if hit is not None:  # any text: edit its words and format in the text format bar, as in Origin
+            self.select_text(hit[0])
+            if self.tfmt.field.isEnabled(): self.tfmt.field.setFocus(); self.tfmt.field.selectAll()
+            return
         ax = self.fig.axes[0]; tab = None
         if any(t.contains(ev)[0] for t in (ax.title, ax.xaxis.label, ax.yaxis.label)) or (ax.get_legend() is not None and ax.get_legend().contains(ev)[0]): tab = 0
         elif ev.inaxes is None or any(t.contains(ev)[0] for t in ax.get_xticklabels() + ax.get_yticklabels()): tab = 1
@@ -964,14 +1041,46 @@ class GraphWindow(QWidget):
     def _plot_axes(self):
         return [a for a in self.fig.axes if a.get_label() != "<colorbar>" and not hasattr(a, "_colorbar")]
 
-    def _text_at(self, ev):
-        """(key, text) of the plot text under the mouse, or None."""
-        for ai, a in enumerate(self._plot_axes()):
-            for key, t in _text_keys(a, ai):
+    def _text_at(self, ev, any_text=False):
+        """(key, text) of the plot text under the mouse, or None; any_text: also titles, axis titles, ticks, legend entries, notes."""
+        if not any_text:
+            for ai, a in enumerate(self._plot_axes()):
+                for key, t in _text_keys(a, ai):
+                    try:
+                        if t.get_visible() and t.contains(ev)[0]: return key, t
+                    except Exception: pass
+            return None
+        for key, arts, _ in text_targets(self.fig):
+            for t in arts:
                 try:
-                    if t.get_visible() and t.contains(ev)[0]: return key, t
+                    if t.get_visible() and t.get_text().strip() and t.contains(ev)[0]: return key, t
                 except Exception: pass
         return None
+
+    def _text_target(self, key):
+        """(key, texts, user overrides, original words) of a text by key, as drawn now; None if it is not in the graph."""
+        for k, arts, words in text_targets(self.fig):
+            if k == key: return k, arts, dict((self.spec.get("style") or {}).get("texts", {}).get(k, {})), words
+        return None
+
+    def select_text(self, key, redraw=True):
+        """Select a text for the text format bar and outline it on screen (the outline is never exported)."""
+        from matplotlib.patches import Rectangle
+        for r in getattr(self, "_tsel_marks", []):
+            try: r.remove()
+            except (ValueError, AttributeError): pass
+        self._tsel_marks = []; cur = self._text_target(key) if key else None; self._tsel = key if cur else None
+        if cur is not None:
+            try:
+                rend = self.canvas.get_renderer()
+                for t in cur[1][:60]:
+                    if not t.get_visible() or not t.get_text().strip(): continue
+                    bb = t.get_window_extent(rend).expanded(1.08, 1.25)
+                    r = Rectangle((bb.x0, bb.y0), bb.width, bb.height, transform=None, fill=False, ec="#d62728", ls="--", lw=1.0, zorder=1e6)
+                    self.fig.add_artist(r); r._pb_mark = True; self._tsel_marks.append(r)
+            except Exception: pass
+        if hasattr(self, "tfmt"): self.tfmt.load(self._tsel)
+        if redraw: self.canvas.draw_idle()
 
     def _text_drag_move(self, ev):
         if self._tdrag is None or ev.x is None: return
@@ -984,6 +1093,8 @@ class GraphWindow(QWidget):
         self._tdrag = None
         if getattr(self, "_drawing", None): self._pre = None; return
         if ev is not None and ev.button == 1 and not self.nav.mode and not self.act_region.isChecked() and not self.act_reader.isChecked() and not ev.dblclick:
+            anyhit = self._text_at(ev, any_text=True)
+            if (anyhit[0] if anyhit else None) != self._tsel: self.select_text(anyhit[0] if anyhit else None)
             hit = self._text_at(ev)
             if hit is not None:  # drag a field name or other plot text; the drop is saved with the graph
                 key, t = hit; p = t.get_transform().transform(t.get_position())

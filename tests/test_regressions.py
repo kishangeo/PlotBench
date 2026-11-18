@@ -134,13 +134,31 @@ class ThermobaroTests(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(TB.zircon_dfmq_loucks2020([0, np.nan], [200, 200], [10, 10]))))
 
 
+class TextFormatTests(unittest.TestCase):
+    def test_one_text_formatted_alone(self):
+        from plotbench import graphs as G, textfmt as TF
+        self.assertEqual(TF.rich("SiO_{2}"), r"SiO$_{\mathregular{2}}$"); self.assertEqual(TF.rich("a_b"), "a_b")
+        w = main_window(); sh = w.new_book(pd.DataFrame({"x": [1.0, 2, 3], "y": [1.0, 4, 9]}), "T").current()
+        g = w.new_graph(sh, "Scatter", "x", ["y"]); QA.processEvents(); ax = g._plot_axes()[0]
+        y0, t0 = ax.yaxis.label.get_fontsize(), [t.get_fontsize() for t in ax.get_xticklabels()]
+        g._set_text("0|@xlabel", text="Fe^{3+}", size=17, bold=True, rotation=15)
+        ax = g._plot_axes()[0]; lab = ax.xaxis.label
+        self.assertEqual((lab.get_text(), lab.get_fontsize(), lab.get_fontweight(), lab.get_rotation()), (r"Fe$^{\mathregular{3+}}$", 17, "bold", 15))
+        self.assertEqual(ax.yaxis.label.get_fontsize(), y0); self.assertEqual([t.get_fontsize() for t in ax.get_xticklabels()], t0)
+        fn = str(TMP / "fmt.pbp"); w.project_path = fn; w.save_project(); w.dirty = False; w.open_project(fn)
+        g2 = next(x for x in w.windows() if x.kind == "graph"); self.assertEqual(g2._plot_axes()[0].xaxis.label.get_fontsize(), 17)
+        new = w.new_graph(w.win("T").current(), "Line", "x", ["y"]); QA.processEvents(); self.assertIsNotNone(new)  # used to crash
+        close(w)
+
+
 class ExportTests(unittest.TestCase):
     def test_latex_numbers_masks_labels(self):
         w = main_window()
         sh = w.new_book(pd.DataFrame({"Spot": ["SpotA1", "B"], "Ti (ppm)": [12450.0, 3.0], "s (yErr-)": [1.0, 2.0]}), "L").current()
-        sh.mask = {("Ti (ppm)", 1)}; t = open(w.export_latex(str(TMP / "t.tex"))).read()
+        sh.mask = {("Ti (ppm)", 1)}
+        with open(w.export_latex(str(TMP / "t.tex"))) as fh: t = fh.read()
         self.assertIn("12450", t); self.assertNotIn("e+04", t); self.assertIn("SpotA1", t); self.assertNotIn("SpotA$", t)
-        self.assertIn("(yErr-)", t); self.assertNotIn("\nB &", t); close(w)
+        self.assertIn("(yErr-)", t); self.assertIn("\nB &  & 2", t); close(w)  # only the masked cell is blanked
 
 
 if __name__ == "__main__":
