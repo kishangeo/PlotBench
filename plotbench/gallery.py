@@ -39,13 +39,23 @@ CATEGORIES = [
                       "Ternary", "Piper Diagram"]),
     ("Geochronology", plots5.GEOCHRON),
     ("Multivariate (PCA)", plots5.GEOCHRON_PCA),
-    ("3D", ["3D Scatter", "3D Surface"]),
+    ("3D", ["3D Scatter", "3D Surface", "3D Line (path)", "3D Bars", "3D Vectors"]),
     ("Matrix (from a matrixbook)", ["Image / Heat Map", "Filled Contour", "Contour Lines", "3D Colour-map Surface", "3D Wireframe"]),
 ]
 MATRIX_KINDS = set(CATEGORIES[-1][1])
 FAILED = {}  # thumbnails that could not be drawn (kind -> error), for tests and diagnostics
 HINTS = {k: v[2] for k, v in P.PLOT_TYPES.items()}
 HINTS.update({k: "Active matrixbook" for k in MATRIX_KINDS})
+
+
+def min_ys(kind):
+    """Fewest data columns besides X that a plot type needs, read from its data hint; None when it is not a matter of counting
+    (diagrams that find their columns by name, plots that ask in a dialog)."""
+    h = HINTS.get(kind, "")
+    if any(w in h for w in ("wt%", "ppm", "source", "colour", "Na2O")) or not h: return None
+    if h.startswith("Ca (X)"): return 5
+    parts = [p for p in h.split("+") if p.strip()]; xfirst = h.startswith("X") or "(X)" in parts[0]
+    return max(1, len(parts) - (1 if xfirst else 0))
 
 
 def categories():
@@ -77,6 +87,11 @@ def _sample(kind, r=np.random.default_rng(0)):
         if kind == "Color-mapped Line": t = np.linspace(0, 6, 80); return t, [np.sin(t), t], ["y", "z"], {}
         return xs, [ys, z], ["y", "z"], ({"ms": 6.5} if kind != "Bubble + Color" else {"frame": pd.DataFrame({"s": r.uniform(1, 5, 30)}), "size": "s"})
     if kind in ("Heat Map",): return np.arange(6), [r.uniform(0, 1, 6) for _ in range(5)], list("abcde"), {}
+    if kind == "3D Line (path)": t = np.linspace(0, 12, 120); return np.cos(t), [np.sin(t), t], ["y", "z"], {}
+    if kind == "3D Bars": a, b = np.meshgrid(np.arange(5.0), np.arange(4.0)); return a.ravel(), [b.ravel(), (a + 1.5 * b).ravel() + 1], ["y", "z"], {}
+    if kind == "3D Vectors":
+        a, b, c = (v.ravel() for v in np.meshgrid(np.arange(3.0), np.arange(3.0), np.arange(3.0)))
+        return a, [b, c, -b + 1, a - 1, np.full(a.size, 0.6)], ["y", "z", "u", "v", "w"], {}
     if kind in ("Contour (XYZ)", "3D Scatter", "3D Surface", "2D Kernel Density"):
         a, b = r.uniform(-2, 2, 250), r.uniform(-2, 2, 250); return a, [b, np.exp(-(a ** 2 + b ** 2) / 2)], ["y", "z"], {}
     if kind in ("Ternary", "Ternary + Color", "Ternary Contour", "Ternary Density (KDE contours)"):
@@ -157,8 +172,9 @@ def thumbnail(kind, cache_dir, size=(150, 112)):
 class PlotGallery(QDialog):
     """Categories on the left, thumbnails on the right; double-click (or OK) to plot the selected columns."""
 
-    def __init__(self, parent, cache_dir, selection_hint=""):
+    def __init__(self, parent, cache_dir, selection_hint="", n_ys=None):
         super().__init__(parent); self.setWindowTitle("Plot Gallery"); self.resize(1080, 700); self.choice = None
+        self.n_ys = n_ys  # data columns that would be plotted: plot types that need more are greyed, with the reason
         Path(cache_dir).mkdir(parents=True, exist_ok=True); self.cache = cache_dir; self.cats = categories()
         self.search = QLineEdit(); self.search.setPlaceholderText("Search plot types (e.g. contour, ternary, error)")
         self.side = QListWidget(); self.side.setIconSize(QSize(40, 30)); self.side.setFixedWidth(270)
@@ -190,9 +206,19 @@ class PlotGallery(QDialog):
         self.grid.clear(); self._pending = []
         for k in kinds:
             it = QListWidgetItem(k); it.setData(Qt.UserRole, k); it.setToolTip(f"<p style='max-width:420px'>{PH.html(k, short=True)}</p>")
+            why = self.short_of(k)
+            if why:
+                from PySide6.QtGui import QBrush, QColor
+                it.setForeground(QBrush(QColor("#a0a4aa"))); it.setToolTip(f"<p style='max-width:420px'><b>{why}</b><br>{PH.html(k, short=True)}</p>")
             self.grid.addItem(it); self._pending.append(it)
         self.timer.start()  # thumbnails render one by one, so the window stays responsive
         if self.grid.count(): self.grid.setCurrentRow(0)
+
+    def short_of(self, kind):
+        """Why the selected columns cannot make this plot ('' if they can, or if it cannot be told)."""
+        need = min_ys(kind)
+        if self.n_ys is None or need is None or kind in MATRIX_KINDS or self.n_ys >= need: return ""
+        return f"Needs {need} data columns besides X ({HINTS[kind]}); {self.n_ys} selected."
 
     def _render_next(self):
         if not self._pending: return self.timer.stop()
@@ -211,7 +237,9 @@ class PlotGallery(QDialog):
     def _describe(self, cur, _prev=None):
         if cur is None: return
         from .examples import for_plot
-        k = cur.data(Qt.UserRole); self.hint.setHtml(PH.html(k)); self.example.setEnabled(for_plot(k) is not None)
+        k = cur.data(Qt.UserRole); why = self.short_of(k)
+        self.hint.setHtml((f"<p style='color:#b45309'><b>{why}</b> Select more columns, or open the example data.</p>" if why else "") + PH.html(k))
+        self.example.setEnabled(for_plot(k) is not None)
 
     def _open_example(self):
         """Load the example worksheet for the selected plot type and plot it (the gallery closes)."""

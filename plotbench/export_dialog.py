@@ -7,7 +7,7 @@ import io
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QDialog, QFormLayout, QComboBox, QDoubleSpinBox, QCheckBox, QLabel, QDialogButtonBox, QHBoxLayout,
-                               QVBoxLayout)
+                               QVBoxLayout, QPushButton, QInputDialog)
 
 PRESETS = [("72 dpi (screen)", 72), ("150 dpi (draft)", 150), ("300 dpi (print, most journals)", 300),
            ("600 dpi (line art, high quality)", 600), ("1200 dpi (fine line art)", 1200)]
@@ -45,7 +45,13 @@ class ExportDialog(QDialog):
         self.pic = QLabel(); self.pic.setAlignment(Qt.AlignCenter); self.pic.setMinimumSize(380, 300)
         self.pic.setStyleSheet("background: #8a8f98; border-radius: 6px")
         size = QHBoxLayout(); size.addWidget(self.w); size.addWidget(QLabel("x")); size.addWidget(self.h); size.addWidget(self.unit)
-        f = QFormLayout(); f.addRow("Journal size", self.journal); f.addRow("Resolution", self.dpi); f.addRow("Size (width x height)", size)
+        # named presets (kept in the settings): resolution, size, unit and the two switches under one name
+        self.presets = (getattr(parent, "settings", None) or {}).setdefault("export_presets", {}) if hasattr(parent, "settings") else {}
+        self.preset = QComboBox(); self.preset.setToolTip("Your saved export settings. Choose one to fill in everything below.")
+        save_p, del_p = QPushButton("Save as preset..."), QPushButton("Delete"); save_p.clicked.connect(self.save_preset); del_p.clicked.connect(self.delete_preset)
+        prow = QHBoxLayout(); prow.addWidget(self.preset, 1); prow.addWidget(save_p); prow.addWidget(del_p); self._fill_presets()
+        self.preset.activated.connect(lambda *_: self.apply_preset(self.preset.currentText()))
+        f = QFormLayout(); f.addRow("Preset", prow); f.addRow("Journal size", self.journal); f.addRow("Resolution", self.dpi); f.addRow("Size (width x height)", size)
         if many: f.addRow("", self.keep); self.keep.toggled.connect(self._update)
         f.addRow("", self.trans); f.addRow("", self.editable); f.addRow(self.info)
         self.vector = bool(fn) and str(fn).lower().endswith(VECTOR)
@@ -59,6 +65,39 @@ class ExportDialog(QDialog):
         self.journal.currentIndexChanged.connect(self._journal)
         for sig in (self.dpi.currentTextChanged, self.w.valueChanged, self.h.valueChanged): sig.connect(self._update)
         self.small = None; self._update()
+
+    def _fill_presets(self, current=None):
+        self.preset.clear(); self.preset.addItem("(none)"); self.preset.addItems(sorted(self.presets))
+        if current: self.preset.setCurrentText(current)
+
+    def preset_value(self):
+        return {"dpi": self.dpi_value(), "w": self.w.value(), "h": self.h.value(), "unit": self.unit.currentText(),
+                "transparent": self.trans.isChecked(), "editable_text": self.editable.isChecked()}
+
+    def save_preset(self, name=None):
+        if not name:
+            name, ok = QInputDialog.getText(self, "Save preset", "Name for these export settings (e.g. 'Elsevier single column, 600 dpi'):")
+            if not ok or not name.strip(): return
+        if self.dpi_value() is None: return
+        self.presets[name.strip()] = self.preset_value(); self._fill_presets(name.strip()); self._store()
+
+    def delete_preset(self):
+        if self.presets.pop(self.preset.currentText(), None) is not None: self._fill_presets(); self._store()
+
+    def _store(self):
+        p = self.parent()
+        if hasattr(p, "settings"):
+            from .app import save_settings
+            p.settings["export_presets"] = self.presets; save_settings(p.settings)
+
+    def apply_preset(self, name):
+        v = self.presets.get(name)
+        if not v: return
+        self.journal.setCurrentIndex(0); self.unit.setCurrentText(v.get("unit", "in")); self.w.setValue(float(v["w"])); self.h.setValue(float(v["h"]))
+        match = [i for i, (_, d) in enumerate(PRESETS) if d == v["dpi"]]
+        if match: self.dpi.setCurrentIndex(match[0])
+        else: self.dpi.setEditText(f"{v['dpi']:g}")
+        self.trans.setChecked(bool(v.get("transparent"))); self.editable.setChecked(bool(v.get("editable_text", True))); self._update()
 
     def _journal(self):
         mm = self.journal.currentData()

@@ -24,7 +24,7 @@ publication-ready figures without writing code. It runs on Windows, macOS and Li
 - **Geochronology.** Wetherill and Tera-Wasserburg concordia, concordia and weighted-mean ages, York isochrons, common-Pb correction (Stacey & Kramers 1975), discordance filtering, detrital KDE and PDP plots.
 - **Your data stay linked.** Results are written back into the sheet as new columns; masked rows drop out of every plot and calculation; graphs redraw when the data change.
 
-A user manual with screenshots is built in (Help > User Manual, F1), and 27 example data sets open with a finished graph. Short [tutorials](docs/TUTORIALS.md) cover typical tasks.
+A user manual with screenshots is built in (Help > User Manual, F1), and 29 example data sets open with a finished graph. Short [tutorials](docs/TUTORIALS.md) cover typical tasks.
 
 ## Download and install
 

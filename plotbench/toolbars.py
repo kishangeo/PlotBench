@@ -387,7 +387,7 @@ def _ribbon(main, bars, theme):
     for title, al in pages:
         page = QToolBar(); page.setIconSize(QSize(24, 24)); page.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
         for a in al:
-            if not a.iconText() or a.iconText() == a.text() and len(a.text()) > 12: a.setIconText(_short(a.toolTip() or a.text()))
+            a.setIconText(_short(a.toolTip() or a.text()))
         page.addActions(al); tabs.addTab(page, title)
     corner = QWidget(); h = QHBoxLayout(corner); h.setContentsMargins(0, 0, 6, 0); h.addWidget(_search_box(main))
     sw = ThemeSwitch(main); sw.setChecked(theme == "dark"); sw.toggled.connect(lambda on: main.set_theme("dark" if on else "light")); h.addWidget(sw)
@@ -399,8 +399,27 @@ def _ribbon(main, bars, theme):
     return rib
 
 
+RIBBON_LABELS = (  # hand-written labels (tooltip starts with ... -> label) where the first words of the tooltip read badly
+    ("Set column values", "Formula"), ("Sort by several", "Sort"), ("Mask selected", "Mask cells"), ("Descriptive", "Statistics"),
+    ("Nonlinear", "Fit a curve"), ("Correlation", "Correlation"), ("Two-sample", "t-test"), ("Principal", "PCA"), ("K-means", "K-means"),
+    ("Baseline", "Baseline"), ("Mineral formula", "Mineral formula"), ("Normalise oxides", "Normalise 100%"), ("Thermobarometry", "Thermobarometry"),
+    ("Coupled P-T", "P-T solver"), ("Fe-Ti oxide", "Fe-Ti oxides"), ("U-Pb ages", "U-Pb ages"), ("Isochron age", "Isochron age"),
+    ("Plot details", "Plot details"), ("Graph properties", "Graph properties"), ("Colour-mapped", "Colour map"), ("Plot Gallery", "Plot"),
+    ("Project Explorer", "Project"), ("New layout", "New layout"), ("Search commands", "Search"),
+    ("Plot: Box + Data", "Box + points"), ("Plot: Harker", "Harker"), ("Plot: Spider: REE", "REE spider"), ("Plot: Spider: Multi", "Multi-element"),
+    ("Plot: Frost", "Frost Fe-number"), ("Plot: Pyroxene", "Pyroxene quad"), ("Plot: Feldspar", "Feldspar"), ("Plot: Pearce", "Pearce granite"),
+    ("Plot: Weighted", "Weighted mean"), ("Plot: Detrital", "Detrital ages"), ("Plot: PCA", "PCA biplot"), ("Plot: Raincloud", "Raincloud"),
+    ("Plot: Waterfall", "Waterfall"), ("Plot: AFM", "AFM"), ("Plot: Shand", "Shand"))
+
+
 def _short(tip):
-    """One- or two-word label under a ribbon button, from its tooltip."""
+    """Label under a ribbon button: hand-written where there is one, the plot's own name on the Plot tab, else from the tooltip."""
+    for start, label in RIBBON_LABELS:
+        if tip.startswith(start): return label
+    if tip.startswith("Plot: "):
+        name = tip[6:].split(" (")[0].strip()
+        if len(name) <= 16: return name
+    if len(tip) <= 14: return tip
     w = [x for x in tip.replace("&", "").split("(")[0].replace("...", "").replace("…", "").split() if x]
     return " ".join(w[:2]) if len(" ".join(w[:2])) <= 14 else w[0][:12]
 
@@ -412,7 +431,7 @@ def _all_commands(main):
     def walk(menu, path):
         for a in menu.actions():
             if a.menu() is not None: walk(a.menu(), path + [a.text().replace("&", "")])
-            elif a.text() and not a.isSeparator() and a.isEnabled(): out[" > ".join(path + [a.text().replace("&", "")])] = a
+            elif a.text() and not a.isSeparator() and (a.isEnabled() or not a.isVisible()) and a.text() != "Show all commands": out[" > ".join(path + [a.text().replace("&", "")])] = a
     for a in main.menuBar().actions():
         if a.menu() is not None: walk(a.menu(), [a.text().replace("&", "")])
     return out

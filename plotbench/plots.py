@@ -166,6 +166,33 @@ def surface3d(fig, x, ys, names, xname, extra):
     ax.plot_trisurf(X, Y, Z, edgecolor="none"); ax.set_xlabel(xname); ax.set_ylabel(names[0]); ax.set_zlabel(names[1])
 
 
+def line3d(fig, x, ys, names, xname, extra):
+    """A path through X, Y, Z points in row order (trajectory, P-T-t path, drill-hole trace)."""
+    ax = _ax(fig, projection="3d"); X, Y, Z = _xyz(x, ys)
+    ax.plot(X, Y, Z, "-o", ms=3); ax.set_xlabel(xname); ax.set_ylabel(names[0]); ax.set_zlabel(names[1])
+
+
+def bars3d(fig, x, ys, names, xname, extra):
+    """A bar at every (X, Y) position, as high as Z; coloured by height."""
+    import matplotlib
+    ax = _ax(fig, projection="3d"); X, Y, Z = _xyz(x, ys)
+    if not X.size: raise ValueError("No rows with numbers in X, Y and Z.")
+    def step(v): u = np.unique(v); return 0.6 * (float(np.min(np.diff(u))) if u.size > 1 else 1.0)
+    dx, dy = step(X), step(Y); span = float(np.ptp(Z)) or 1.0
+    cols = matplotlib.colormaps[matplotlib.rcParams["image.cmap"]]((Z - Z.min()) / span)
+    ax.bar3d(X - dx / 2, Y - dy / 2, np.zeros_like(Z), dx, dy, Z, color=cols, shade=True)
+    ax.set_xlabel(xname); ax.set_ylabel(names[0]); ax.set_zlabel(names[1])
+
+
+def vectors3d(fig, x, ys, names, xname, extra):
+    """Arrows from (X, Y, Z) with components (U, V, W): five columns besides X."""
+    if len(ys) < 5: raise ValueError("3D Vectors needs X and five more columns: Y, Z, then the components U, V, W.")
+    a = [np.asarray(v, float) for v in [x] + list(ys[:5])]; m = np.all(np.isfinite(a), axis=0); X, Y, Z, U, V, W = (v[m] for v in a)
+    ax = _ax(fig, projection="3d"); size = float(max(np.ptp(X), np.ptp(Y), np.ptp(Z))) or 1.0; big = float(np.max(np.sqrt(U ** 2 + V ** 2 + W ** 2))) or 1.0
+    ax.quiver(X, Y, Z, U, V, W, length=0.15 * size / big, arrow_length_ratio=0.25, lw=1)
+    ax.set_xlabel(xname); ax.set_ylabel(names[0]); ax.set_zlabel(names[1])
+
+
 TERNARY_H = np.sqrt(3) / 2
 
 
@@ -220,7 +247,8 @@ PLOT_TYPES = {
     "Bubble": (bubble, True, "X + Y + Size"), "Color-mapped Scatter": (color_scatter, True, "X + Y + Color"),
     "Polar (theta deg, r)": (polar, True, "X (deg) + R..."), "Contour (XYZ)": (contour, True, "X + Y + Z"),
     "Heat Map": (heatmap, True, "X (row labels) + Y..."), "3D Scatter": (scatter3d, True, "X + Y + Z"),
-    "3D Surface": (surface3d, True, "X + Y + Z"), "Ternary": (ternary, True, "A (X) + B + C"),
+    "3D Surface": (surface3d, True, "X + Y + Z"), "3D Line (path)": (line3d, True, "X + Y + Z"),
+    "3D Bars": (bars3d, True, "X + Y + Z"), "3D Vectors": (vectors3d, True, "X + Y + Z + U + V + W"), "Ternary": (ternary, True, "A (X) + B + C"),
     "Normal Probability": (probability, False, "Y..."), "Scatter Matrix": (scatter_matrix, False, "Y..."),
 }
 

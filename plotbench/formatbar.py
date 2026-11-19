@@ -183,3 +183,91 @@ def matplotlib_color(art):
         if kind == "PathCollection": return to_hex(art.get_facecolor()[0])
         return to_hex(art.patches[0].get_facecolor())
     except Exception: return "#1f77b4"
+
+
+class ObjectBar(QToolBar):
+    """Format row for what was clicked on the graph: an axis (range, scale, grid, ticks) or the legend (show, place, frame).
+    It takes the place of the curve bar until something else is clicked. Every change is one undo step."""
+
+    def __init__(self, graph):
+        from PySide6.QtWidgets import QLineEdit
+        from .graphs import LEGEND
+        super().__init__("Axis and legend", graph); self.g = graph; self.setObjectName("objectBar"); self._busy = False; self.kind = None
+        self.title = QLabel(); self.title.setStyleSheet("font-weight: bold"); self.addWidget(self.title)
+        self.lo, self.hi = QLineEdit(), QLineEdit()
+        for w, tip in ((self.lo, "Where the axis starts; empty = automatic"), (self.hi, "Where the axis ends; empty = automatic")):
+            w.setFixedWidth(96); w.setToolTip(tip); w.setClearButtonEnabled(True)
+        self.scale = QComboBox(); self.scale.addItems(["linear", "log"]); self.scale.setToolTip("Axis scale")
+        self.auto = QAction("Auto range", self); self.auto.setToolTip("Let the data decide where this axis starts and ends")
+        self.grid = self._toggle("Grid", "Grid lines (both axes)"); self.minor = self._toggle("Minor ticks", "Small ticks between the numbered ones (both axes)")
+        self.inward = self._toggle("Ticks inside", "Ticks point into the plot (both axes)"); self.mirror = self._toggle("Ticks all round", "Ticks on the top and right sides too")
+        self.tickfont = QAction("Number font...", self); self.tickfont.setToolTip("Font, size and colour of the numbers along this axis (text format row)")
+        self.axis_acts = [self.addWidget(QLabel(" From ")), self.addWidget(self.lo), self.addWidget(QLabel(" To ")), self.addWidget(self.hi)]
+        self.addAction(self.auto); self.axis_acts += [self.auto, self.addWidget(QLabel("  Scale ")), self.addWidget(self.scale), self.addSeparator()]
+        for a in (self.grid, self.minor, self.inward, self.mirror, self.tickfont): self.addAction(a); self.axis_acts.append(a)
+        self.show_leg = self._toggle("Show", "Show the legend"); self.pos = QComboBox(); self.pos.addItems([p for p in LEGEND if p != "none"])
+        self.pos.setToolTip("Where the legend sits. You can also drag the legend on the graph.")
+        self.frame = self._toggle("Frame", "A box around the legend"); self.unpin = QAction("Forget dragged position", self)
+        self.unpin.setToolTip("Put the legend back where the Position box says")
+        self.addAction(self.show_leg); self.leg_acts = [self.show_leg, self.addWidget(QLabel("  Position ")), self.addWidget(self.pos)]
+        for a in (self.frame, self.unpin): self.addAction(a); self.leg_acts.append(a)
+        self.addSeparator(); more = QAction("More options...", self); more.setToolTip("All axis and legend settings (Graph Properties)")
+        more.triggered.connect(self.more); self.addAction(more)
+        done = QAction("Done", self); done.setToolTip("Back to the curve format row (or click a curve or empty space)"); done.triggered.connect(lambda: self.g.select_object(None))
+        self.addAction(done)
+        self.lo.editingFinished.connect(lambda: self.set_limit("min", self.lo)); self.hi.editingFinished.connect(lambda: self.set_limit("max", self.hi))
+        self.scale.currentTextChanged.connect(lambda v: self.put(**{f"{self.kind}scale": v}))
+        self.auto.triggered.connect(lambda: self.put(**{f"{self.kind}min": "", f"{self.kind}max": ""}))
+        self.grid.toggled.connect(lambda on: self.put(grid=on)); self.minor.toggled.connect(lambda on: self.put(minor_ticks=on))
+        self.inward.toggled.connect(lambda on: self.put(ticks_in=on)); self.mirror.toggled.connect(lambda on: self.put(mirror_ticks=on))
+        self.tickfont.triggered.connect(lambda: self.g.select_text(f"0|@{self.kind}ticks"))
+        self.show_leg.toggled.connect(lambda on: self.put(legend=(self.pos.currentText() if on else "none")))
+        self.pos.currentTextChanged.connect(lambda v: self.put(legend=v, legend_pos={}))
+        self.frame.toggled.connect(lambda on: self.put(legend_frame=on)); self.unpin.triggered.connect(lambda: self.put(legend_pos={}))
+
+    def _toggle(self, text, tip):
+        a = QAction(text, self); a.setCheckable(True); a.setToolTip(tip); return a
+
+    def load(self, kind):
+        """Show the controls for 'x', 'y' or 'legend' with the graph's present values."""
+        from .graphs import full_style
+        self.kind = kind
+        if not kind: return
+        self._busy = True
+        try:
+            st = full_style(self.g.spec["style"]); axis = kind in ("x", "y")
+            for a in self.axis_acts: a.setVisible(axis)
+            for a in self.leg_acts: a.setVisible(not axis)
+            self.title.setText(f" {kind.upper()} axis " if axis else " Legend ")
+            if axis:
+                axes = self.g._plot_axes(); lim = getattr(axes[0], f"get_{kind}lim")() if axes else (0, 1)
+                for w, key, v in ((self.lo, "min", lim[0]), (self.hi, "max", lim[1])):
+                    w.setText(str(st[f"{kind}{key}"])); w.setPlaceholderText(f"auto ({v:.4g})")
+                self.scale.setCurrentText(st[f"{kind}scale"] if st[f"{kind}scale"] in ("linear", "log") else "linear")
+                self.grid.setChecked(bool(st["grid"])); self.minor.setChecked(bool(st["minor_ticks"]))
+                self.inward.setChecked(bool(st["ticks_in"])); self.mirror.setChecked(bool(st["mirror_ticks"]))
+            else:
+                self.show_leg.setChecked(st["legend"] != "none"); self.frame.setChecked(bool(st["legend_frame"]))
+                if st["legend"] != "none": self.pos.setCurrentText(st["legend"])
+                self.unpin.setEnabled(bool(st.get("legend_pos")))
+        finally: self._busy = False
+
+    def put(self, **kw):
+        if self._busy or not self.kind: return
+        st = dict(self.g.spec["style"]); st.update(kw); self.g.set_style(st)
+        if hasattr(self.g.main, "mark_dirty"): self.g.main.mark_dirty()
+
+    def set_limit(self, which, box):
+        if self._busy or not self.kind: return
+        from .graphs import full_style
+        t = box.text().strip(); key = f"{self.kind}{which}"
+        if t:
+            try: float(t)
+            except ValueError:
+                self.g.main.statusBar().showMessage(f"'{t}' is not a number: type the axis limit as a number, or leave it empty for automatic.", 8000)
+                return self.load(self.kind)
+        if str(full_style(self.g.spec["style"])[key]) != t: self.put(**{key: t})
+
+    def more(self):
+        from .graphs import StyleDialog
+        StyleDialog(self.g.main, self.g.spec["style"] or {}, graph=self.g, tab=1 if self.kind in ("x", "y") else 0).exec()

@@ -25,7 +25,7 @@ Set-Location $PSScriptRoot
 .\.venv\Scripts\python -c "from plotbench import examples; examples._demo()"; if ($LASTEXITCODE) { throw "Build step failed: -c 'from plotbench import examples; examples._demo()'" }
 .\.venv\Scripts\pyinstaller --noconfirm --windowed --name PlotBench --icon plotbench\assets\icon.ico `
   --add-data "plotbench\assets;plotbench\assets" --add-data "plotbench\examples;plotbench\examples" `
-  --add-data "plotbench\manual;plotbench\manual" `
+  --add-data "plotbench\manual;plotbench\manual" --add-data "CHANGELOG.md;." `
   --hidden-import matplotlib.backends.backend_pdf --hidden-import matplotlib.backends.backend_ps `
   --hidden-import matplotlib.backends.backend_svg --hidden-import matplotlib.backends.backend_pgf `
   --hidden-import PIL.TiffImagePlugin --hidden-import pywt --hidden-import h5py --hidden-import xlrd --hidden-import scipy.odr `

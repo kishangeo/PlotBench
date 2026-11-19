@@ -39,7 +39,8 @@ class TileDelegate(QStyledItemDelegate):
             p.drawPixmap(int(frame.center().x() - sz.width() / 2), int(frame.center().y() - sz.height() / 2), pm)
         text_rect = QRectF(r.left() + 4, frame.bottom() + 6, r.width() - 8, r.bottom() - frame.bottom() - 8)
         fm = QFontMetrics(option.font); words = str(index.data(Qt.DisplayRole) or ""); text = self._two_lines(words, fm, int(text_rect.width()))
-        p.setPen(pal.text().color()); f = option.font
+        fg = index.data(Qt.ForegroundRole)  # greyed tiles (e.g. plot types the selection cannot make)
+        p.setPen(fg.color() if fg is not None and hasattr(fg, "color") else pal.text().color()); f = option.font
         if selected: f.setBold(True)
         p.setFont(f); opt = QTextOption(Qt.AlignHCenter | Qt.AlignTop); opt.setWrapMode(QTextOption.WordWrap); p.drawText(text_rect, text, opt)
         p.restore()

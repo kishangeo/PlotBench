@@ -35,6 +35,7 @@ from . import analysis7 as G7
 from . import analysis8 as H8
 from .startpage import StartPage, make_template, app_icon, asset
 from . import plots2  # noqa: F401  (registers more plot types)
+from . import fitlib  # noqa: F401  (adds functions to the curve-fit library)
 from .ui3 import Digitizer
 import html as _html
 import os
@@ -47,7 +48,7 @@ from .graphs import (GraphWindow, StyleDialog, LayoutWindow, LayoutDialog, save_
                      set_default_theme, user_dir)
 
 APP = "PlotBench"
-VERSION = "1.30.3"
+VERSION = "1.31.0"
 
 
 class ReportWindow(QTextEdit):
@@ -107,7 +108,7 @@ class FormDialog(QDialog):
         return w.text()
 
 
-def read_text_table(fn):
+def read_text_table(fn, progress=None):
     """Text table with the delimiter found automatically. Columns lined up with spaces are read as one separator per gap
     (a single-space delimiter would give empty columns for every extra space)."""
     import csv
@@ -116,6 +117,8 @@ def read_text_table(fn):
     try: sep = csv.Sniffer().sniff("\n".join(lines[:50]), delimiters=",;\t| ").delimiter
     except csv.Error: sep = None
     if sep == " " or (sep is None and lines and len(lines[0].split()) > 1): sep = r"\s+"
+    if progress is not None:
+        with SH.ProgressFile(fn, progress) as fh: return pd.read_csv(fh, sep=sep, engine="python", comment="#")
     return pd.read_csv(fn, sep=sep, engine="python", comment="#")
 
 
@@ -137,7 +140,7 @@ SHEETED = ("book", "matrix")
 
 def load_settings():
     try: return {**SH.PREFS, "recent": [], **json.loads((user_dir() / "settings.json").read_text())}
-    except (OSError, ValueError): return {**SH.PREFS, "recent": []}
+    except (OSError, ValueError): return {**SH.PREFS, "recent": [], "simple_menus": True}  # a new install starts with short menus
 
 
 def save_settings(st):
@@ -211,18 +214,24 @@ class Main(QMainWindow):
         self.explorer_dock = dock
         self.mdi.subWindowActivated.connect(lambda _: self.refresh_explorer())
         self.mdi.subWindowActivated.connect(lambda w: w is not None and getattr(self, "_start_page", None) is not None and self._start_page.reject())
+        self._updated = (user_dir() / "settings.json").exists()  # settings from an earlier run: this start may follow an update
         self.settings = load_settings(); SH.PREFS.update({k: self.settings[k] for k in SH.PREFS})
         self.console = ConsoleWidget(self)
         cd = QDockWidget("Python Console", self); cd.setWidget(self.console); self.addDockWidget(Qt.BottomDockWidgetArea, cd)
         cd.hide(); self.console_dock = cd
-        self.folders = []; self.pending_ops = []
+        self.folders = []; self.pending_ops = []; self.undo_log = []; self.redo_log = []
         self.op_timer = QTimer(self); self.op_timer.setSingleShot(True); self.op_timer.setInterval(250); self.op_timer.timeout.connect(self.run_ops)
         self.script_bar = QToolBar("User scripts", self); self.script_bar.setObjectName("userscripts"); self.addToolBar(self.script_bar)
         self.graph_timer = QTimer(self); self.graph_timer.setSingleShot(True); self.graph_timer.setInterval(300)
         self.graph_timer.timeout.connect(self.flush_graphs); self.pending_graphs = []; self._bulk_close = False
         self.setAcceptDrops(True)
         self.build_menus(); self.set_theme(self.settings.get("theme", "light"), save=False)
-        self.new_book(); self.dirty = False; self.statusBar().showMessage("Ready")
+        self.new_book(); self.dirty = False; self.statusBar().showMessage("Ready"); self._first_hint()
+        from PySide6.QtCore import QLockFile
+        self._recovery_lock = QLockFile(str(user_dir() / "recovery.lock")); self._recovery_lock.setStaleLockTime(0)
+        self._autosaves = self._recovery_lock.tryLock(0)  # ponytail: only the first running PlotBench keeps a recovery copy
+        self.autosave_timer = QTimer(self); self.autosave_timer.setInterval(180000); self.autosave_timer.timeout.connect(self.autosave)
+        if self._autosaves: self.autosave_timer.start()
 
     # ---- window bookkeeping
     def uniq(self, prefix):
@@ -273,6 +282,43 @@ class Main(QMainWindow):
             self.mark_dirty()
         return False
 
+    @staticmethod
+    def recovery_path(): return user_dir() / "recovery.pbp"
+
+    def autosave(self):
+        """Every three minutes, unsaved work goes to a recovery copy (never to the project file). It is removed on a normal exit
+        and offered at the next start after a crash. Returns the path written, or None."""
+        if not (self._autosaves and self.dirty and self.windows()): return None
+        tmp = str(self.recovery_path()) + ".tmp"
+        try:
+            self._write_project(tmp, {"app": APP, "version": VERSION, "author": "Kishan Tiwari", "windows": [], "recovered_from": self.project_path or ""})
+            os.replace(tmp, self.recovery_path()); return self.recovery_path()
+        except Exception:  # a recovery copy must never interrupt the work
+            try: os.remove(tmp)
+            except OSError: pass
+            return None
+
+    def drop_recovery(self):
+        if not self._autosaves: return
+        try: os.remove(self.recovery_path())
+        except OSError: pass
+
+    def offer_recovery(self, ask=True):
+        """At start: if the last session ended without a normal exit, offer its recovery copy. Returns True if it was opened."""
+        p = self.recovery_path()
+        if not (self._autosaves and p.exists()): return False
+        import datetime
+        when = datetime.datetime.fromtimestamp(p.stat().st_mtime).strftime("%d %B %Y, %H:%M")
+        if ask and QMessageBox.question(self, APP, f"PlotBench did not close normally last time.\n\nOpen the work it had saved for recovery ({when})?\n"
+                                        "It opens as an unsaved project: use Save Project As to keep it.", QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+            self.drop_recovery(); return False
+        try:
+            self.dirty = False; self.open_project(str(p))
+        except Exception as e:
+            QMessageBox.warning(self, APP, f"The recovery copy could not be opened ({e}). It is kept as {p}."); return False
+        self.settings["recent"] = [r for r in self.settings.get("recent", []) if Path(r) != p.resolve()]; save_settings(self.settings); self.fill_recent()
+        self.project_path = None; self.setWindowTitle(f"{APP} {VERSION} - recovered project"); self.mark_dirty(); return True
+
     def confirm_discard(self, action="closing"):
         """Save / Discard / Cancel when there is unsaved work. True means go ahead (saved or discarded)."""
         if not (self.dirty and self.windows()): return True
@@ -286,7 +332,7 @@ class Main(QMainWindow):
 
     def closeEvent(self, ev):
         if not self.confirm_discard("closing"): return ev.ignore()
-        self._bulk_close = True; ev.accept()
+        self._bulk_close = True; self.drop_recovery(); self._recovery_lock.unlock(); ev.accept()
 
     def dragEnterEvent(self, ev):
         from .sheets import COLUMNS_MIME
@@ -349,13 +395,28 @@ class Main(QMainWindow):
     def active(self, kind):
         s = self.mdi.activeSubWindow(); w = s.widget() if s else None
         if w is not None and w.kind == kind: return w
-        same = [x for x in self.windows() if x.kind == kind]
-        return same[-1] if same else None
+        same = [x for x in self.windows() if x.kind == kind]  # another kind is in front: the one used last, else the newest
+        return self.last_window(kind) or (same[-1] if same else None)
+
+    def advise(self, text, actions):
+        """A message that offers the next step: actions = [(button text, slot)]. Returns what the chosen slot returned, else None."""
+        box = QMessageBox(QMessageBox.Information, APP, text, QMessageBox.NoButton, self)
+        btns = {box.addButton(label, QMessageBox.ActionRole): slot for label, slot in actions}; box.addButton(QMessageBox.Cancel); box.exec()
+        slot = btns.get(box.clickedButton()); return slot() if slot else None
+
+    def last_window(self, kind):
+        """The window of this kind that was active most recently (None if there is none)."""
+        for sub in reversed(self.mdi.subWindowList(QMdiArea.ActivationHistoryOrder)):
+            w = sub.widget()
+            if w is not None and getattr(w, "kind", None) == kind: return w
+        return None
 
     def need_book(self):
-        """Active sheet of the active workbook."""
-        b = self.active("book")
-        if b is None: QMessageBox.warning(self, APP, "Open or create a workbook first."); return None
+        """Active sheet of the active workbook; if another kind of window is in front, the workbook used last."""
+        b = self.active("book") or self.last_window("book")
+        if b is None:
+            b = self.advise("This command works on a worksheet, and there is none yet.", [("New workbook", self.new_book), ("Open an example...", self.show_start)])
+            if b is None or getattr(b, "kind", None) != "book": return None
         return b.current()
 
     def report(self, title, html):
@@ -503,9 +564,15 @@ class Main(QMainWindow):
                 if a.get("book") == sh.book.name and a.get("sheet") == sh.name:
                     for k in ("x", "y"):
                         if a.get(k) == old: a[k] = new
+            for L in g.spec.get("layers", []):
+                if L.get("book") == sh.book.name and L.get("sheet") == sh.name:
+                    if L.get("x") == old: L["x"] = new
+                    L["ys"] = [new if y == old else y for y in L.get("ys", [])]
         for op in sh.ops:
-            for k in ("x", "y", "fit_col", "res_col"):
+            for k in ("x", "y", "fit_col", "res_col", "col", "flag"):
                 if op.get(k) == old: op[k] = new
+            for k, v in (op.get("inputs") or {}).items():
+                if v == old: op["inputs"][k] = new
             if (op.get("cfg") or {}).get("weight_col") == old: op["cfg"]["weight_col"] = new
 
     def delete_window(self, name):
@@ -514,6 +581,87 @@ class Main(QMainWindow):
         for s in self.mdi.subWindowList():
             if s.widget() is w: s.close()
         self.refresh_explorer()
+
+    def show_stats(self, st):
+        """Count, mean, SD, sum, min and max of the selected worksheet cells, at the right of the status bar."""
+        if getattr(self, "stats_label", None) is None:
+            self.stats_label = QLabel(""); self.stats_label.setToolTip("Statistics of the numbers in the selected cells"); self.statusBar().addPermanentWidget(self.stats_label)
+        self.stats_label.setText("" if not st else "   ".join(f"{k} {v:.6g}" for k, v in st.items()))
+
+    def _first_hint(self, done=False):
+        """Until the first graph is made, the status bar says how to make one (a new user's first question)."""
+        lab = getattr(self, "_hint", None)
+        if done:
+            if lab is not None: self.statusBar().removeWidget(lab); lab.deleteLater(); self._hint = None
+            if not self.settings.get("first_graph_made"): self.settings["first_graph_made"] = True; save_settings(self.settings)
+        elif lab is None and not self.settings.get("first_graph_made"):
+            self._hint = QLabel("<b>First graph:</b> click a column header (A, B ...) to select your data, then choose a plot on the "
+                                "<b>Plot</b> tab. &nbsp; <a href='x'>Got it</a>")
+            self._hint.linkActivated.connect(lambda *_: self._first_hint(True)); self.statusBar().addPermanentWidget(self._hint)
+
+    # commands hidden while View > Simple Menus is ticked: {top menu: labels of commands or submenus}. All stay in Search (Ctrl+K).
+    SIMPLE_HIDE = {
+        "File": ["Import Image as Matrix...", "Import HDF5 / NetCDF / MATLAB (.h5 .nc .mat)...", "Import JCAMP-DX Spectrum (.jdx .dx)...",
+                 "Import from SQLite Database...", "Export Workbook to Excel (all sheets)...", "Export Worksheet as LaTeX Table (booktabs)...",
+                 "Export All Graphs and Layouts...", "Export All Graphs to One Multi-page PDF...", "Export Report (HTML or PDF)...",
+                 "Run Python Script..."],
+        "Worksheet": ["Copy Analyses to Other Sheets...", "Stack Columns...", "Unstack Column by Group...", "Pivot Table...", "Split Sheet by Column Value...",
+                      "Join with Another Sheet by Key...", "Reduce Rows (combine every N)...", "Fill Missing Values...", "Row Statistics",
+                      "Frequency Counts...", "Colour Cells by Value (toggle)"],
+        "Column": ["Convert Ions mg/L to meq/L (for Piper diagrams)", "Mineral Formula from Oxides (apfu)...",
+                   "Normalise Major Oxides to 100% (Volatile-Free)", "CIPW Norm (from major oxides)...",
+                   "Thermobarometry (T and P from mineral and rock data)...", "Coupled P-T Solver (thermometer + barometer together)...",
+                   "Fe-Ti Oxide Thermometer / Oxybarometer (Ghiorso & Evans 2008)...", "Unmask All Cells in Sheet"],
+        "Matrix": None,  # the whole menu
+        "Graph": ["Save Graph Format as Template...", "Set Default Theme for New Graphs...", "Copy Format to All Graphs",
+                  "Split into Panels (one per Y column)...", "Edit Layout Page...", "Add Zoom Inset (drag a rectangle on the graph)",
+                  "Repeat Graph for Every Sheet of the Workbook", "Remove Insets and Zoom Insets", "Clear Fitted Curves",
+                  "Add Confidence Ellipse...", "Group Samples By Column..."],
+        "Analysis": ["User-defined Function Fit...", "Multiple Linear Regression...", "Surface Fit z = f(x, y)...",
+                     "Orthogonal Distance Regression (errors in X and Y)...", "Global Fit (shared parameters across columns)...",
+                     "Batch Processing", "Derivative (Savitzky-Golay, 1st to 4th order)...", "Average Selected Curves",
+                     "Subtract Straight Line...", "Subtract Reference Curve...", "Curve Intersections (two selected columns)",
+                     "Find X at Given Y...", "Rise Time (10-90%)", "Polygon Area and Centroid", "FFT Low-pass Filter...",
+                     "IIR / FIR Filter Design and Apply...", "Short-time FFT (spectrogram)...", "Continuous Wavelet Transform (scalogram)",
+                     "Wavelet Denoise...", "Discrete Wavelet Decomposition...", "Correlation / Convolution of Two Columns...",
+                     "Envelope (Hilbert)", "Coherence of Two Columns", "Shirley Background (XPS) and Subtract"],
+        "Statistics": ["Partial Correlation", "Counts, Proportions and Variances", "Regression and Models", "Multivariate and Clustering",
+                       "Survival, Diagnostics and Reliability", "Power and Sample Size...", "ANCOVA...", "Two-way Repeated-measures ANOVA...",
+                       "Mixed-design ANOVA...", "Dunn Post-hoc Test"],
+        "Tools": ["Add Python Script to Menu and Toolbar...", "Remove Script from Menu..."],
+    }
+
+    def set_simple_menus(self, on, save=True):
+        """View > Simple Menus: hide the rarely used commands. Nothing is removed: Search Commands (Ctrl+K) still finds and runs
+        them, and every shortened menu ends in 'Show all commands'. Returns the number of commands hidden."""
+        from PySide6.QtWidgets import QMenu
+        n = 0
+
+        # menus come from findChildren and are kept in 'subs': wrapping QAction.menu() results in PySide can delete the menus
+        subs = self.menuBar().findChildren(QMenu); by_action = {m.menuAction(): m for m in subs}
+
+        def leaves(m): return sum(leaves(by_action[a]) if a in by_action else 1 for a in m.actions() if not a.isSeparator() and a.text())
+
+        def walk(menu, hide):
+            nonlocal n
+            for a in menu.actions():
+                label = a.text().replace("&", ""); sub = by_action.get(a)
+                if label in hide and a.shortcut().isEmpty():  # a hidden action loses its shortcut, so those always stay
+                    a.setVisible(not on); n += (leaves(sub) if sub is not None else 1) if on else 0
+                elif sub is not None: walk(sub, hide)
+        for top in self.menuBar().actions():
+            name = top.text().replace("&", ""); hide = self.SIMPLE_HIDE.get(name, ()); m = by_action.get(top)
+            if m is None or name not in self.SIMPLE_HIDE: continue
+            if hide is None: top.setVisible(not on); n += leaves(m) if on else 0; continue
+            walk(m, {h.replace("&", "") for h in hide})
+        for a in getattr(self, "_show_all", []): a.setVisible(bool(on))
+        if getattr(self, "simple_action", None) is not None and self.simple_action.isChecked() != bool(on):
+            self.simple_action.blockSignals(True); self.simple_action.setChecked(bool(on)); self.simple_action.blockSignals(False)
+        if save:
+            self.settings["simple_menus"] = bool(on); save_settings(self.settings)
+            self.statusBar().showMessage(f"Simple menus: {n} rarely used commands are hidden. Ctrl+K still finds them all." if on
+                                         else "All commands are shown in the menus.", 8000)
+        return n
 
     # ---- menus
     def build_menus(self):
@@ -538,6 +686,11 @@ class Main(QMainWindow):
         self.act(f, "Export All Graphs to One Multi-page PDF...", self.export_pdf_book)
         self.act(f, "Export Report (HTML or PDF)...", self.export_report)
         self.act(f, "Export Graph / Layout (PNG/SVG/PDF/TIFF/EPS)...", self.export_graph, "Ctrl+E")
+        so = f.addMenu("Send to Word / PowerPoint")
+        self.act(so, "This Graph to Word (.docx)...", lambda: self.send_office("docx", False))
+        self.act(so, "All Graphs to Word (one per page)...", lambda: self.send_office("docx", True))
+        self.act(so, "This Graph to PowerPoint (.pptx)...", lambda: self.send_office("pptx", False))
+        self.act(so, "All Graphs to PowerPoint (one per slide)...", lambda: self.send_office("pptx", True))
         f.addSeparator()
         self.act(f, "Run Python Script...", self.run_script)
         self.recent_menu = f.addMenu("Recent Projects"); self.fill_recent()
@@ -563,6 +716,8 @@ class Main(QMainWindow):
         rb.setChecked(self.settings.get("toolbar_layout", "ribbon") == "ribbon"); rb.toggled.connect(self.set_ribbon); v.addAction(rb)
         gp = QAction("Graph Side Panel (curves and shortcuts)", self); gp.setCheckable(True); gp.setChecked(self.settings.get("graph_panel", True))
         gp.toggled.connect(self.set_graph_panel); v.addAction(gp)
+        self.simple_action = QAction("Simple Menus (hide rarely used commands; Ctrl+K still finds them)", self); self.simple_action.setCheckable(True)
+        self.simple_action.toggled.connect(self.set_simple_menus); v.addAction(self.simple_action)
         v.addSeparator()
         self.act(v, "Zoom In (active graph)", lambda: self.need_graph() and self.need_graph().zoom_by(0.8), "Ctrl+=")
         self.act(v, "Zoom Out (active graph)", lambda: self.need_graph() and self.need_graph().zoom_by(1.25), "Ctrl+-")
@@ -570,7 +725,7 @@ class Main(QMainWindow):
 
         ws = mb.addMenu("&Worksheet")
         for text, fn in (("Transpose Sheet", self.ws_transpose), ("Stack Columns...", self.ws_stack), ("Unstack Column by Group...", self.ws_unstack),
-                         ("Pivot Table...", self.ws_pivot), ("Remove Duplicate Rows", self.ws_dedupe), ("Extract Rows by Condition...", self.ws_extract),
+                         ("Pivot Table...", self.ws_pivot), ("Copy Analyses to Other Sheets...", self.copy_analyses), ("Remove Duplicate Rows", self.ws_dedupe), ("Extract Rows by Condition...", self.ws_extract),
                          ("Split Sheet by Column Value...", self.ws_split), ("Join with Another Sheet by Key...", self.ws_join),
                          ("Find and Replace...", self.ws_replace), ("Sort by Several Columns...", self.ws_sort),
                          ("Reduce Rows (combine every N)...", self.ws_reduce), ("Fill Missing Values...", self.ws_fill),
@@ -579,7 +734,7 @@ class Main(QMainWindow):
                          ("Insert Rows...", self.ws_insert_rows), ("Delete Selected Rows", self.ws_delete_rows)):
             self.act(ws, text, fn)
 
-        c = mb.addMenu("&Column")
+        c = c0 = mb.addMenu("&Column")
         self.act(c, "Add Column", lambda: self.need_book() and self.need_book().add_column())
         self.act(c, "Add 100 Rows", lambda: self.need_book() and self.need_book().add_rows(100))
         self.act(c, "Add Sheet to Workbook", lambda: self.active("book") and self.active("book").add_sheet())
@@ -639,10 +794,14 @@ class Main(QMainWindow):
         self.act(g, "Plot Details (show / hide curves, line, symbol, fill)...", self.plot_details, "Ctrl+Shift+T")
         dr = g.addMenu("Draw")
         for kind, label in (("line", "Line"), ("arrow2", "Arrow"), ("rect", "Rectangle"), ("circle", "Circle / Ellipse"), ("polygon", "Polygon"),
-                            ("region", "Region (freehand)")):
+                            ("region", "Region (curved outline)")):
             self.act(dr, label, lambda k=kind: self.draw_shape(k))
+        cf = g.addMenu("Copy / Paste Format")
+        self.act(cf, "Copy Format", self.copy_format); self.act(cf, "Paste Format (everything)", lambda: self.paste_format("all"))
+        self.act(cf, "Paste Colours Only", lambda: self.paste_format("colours")); self.act(cf, "Paste Fonts Only", lambda: self.paste_format("fonts"))
         self.act(g, "Copy Format to All Graphs", self.copy_format_all)
         g.addSeparator()
+        self.act(g, "Layers (more data with its own axes)...", self.layers)
         self.act(g, "Split into Panels (one per Y column)...", self.split_panels)
         self.act(g, "New Layout Page (several graphs on one page)...", self.new_layout, "Ctrl+L")
         self.act(g, "Edit Layout Page...", self.edit_layout)
@@ -662,11 +821,11 @@ class Main(QMainWindow):
         self.act(g, "Clear Fitted Curves", self.clear_fits)
         self.act(g, "Refresh Graphs and Layouts", self.refresh_all, "F5")
 
-        a = mb.addMenu("&Analysis")
+        a = a0 = mb.addMenu("&Analysis")
         fit = a.addMenu("Fitting")
         self.act(fit, "Linear Fit", lambda: self.fit_poly(1))
         self.act(fit, "Polynomial Fit...", lambda: self.fit_poly(None))
-        self.act(fit, "Nonlinear Curve Fit (function library, fixed parameters, bounds, weights)...", self.fit_nl, "Ctrl+F")
+        self.act(fit, "Fit a Curve (nonlinear: function library, bounds, weights)...", self.fit_nl, "Ctrl+F")
         self.act(fit, "User-defined Function Fit...", self.fit_user)
         self.act(fit, "Multiple Peak Fit...", self.fit_peaks)
         self.act(fit, "Multiple Linear Regression...", self.mlr)
@@ -813,17 +972,23 @@ class Main(QMainWindow):
         for key, e in EXAMPLES.items(): self.act(ex, e[0], lambda k=key: self.open_example(k)).setStatusTip(e[2])
         ex.addSeparator(); self.act(ex, "Save All Example Files to a Folder...", self.save_examples)
         h.addSeparator()
+        self.act(h, "Quick Tour (one minute)", self.tour)
         self.act(h, "Start Page...", self.show_start, "Ctrl+Shift+S")
         self.act(h, "Keyboard Shortcuts...", self.show_shortcuts, "Ctrl+/")
         h.addSeparator()
         self.act(h, "Send Feedback...", self.feedback)
+        self.act(h, "What's New in This Version", lambda: self.whats_new(force=True))
         self.act(h, "About", self.about)
         self._about_text = lambda: ( f"<b>{APP} {VERSION}</b><br>Light worksheet, plotting and "
                  "analysis tool.<br>Author: Kishan Tiwari (kishantiwari@iitkgp.ac.in)<br><br>Tips: the grey rows at the top of a "
                  "sheet hold long name, units and comments (used for axis titles). Right-click a column header for X/Y, formulas "
                  "and properties; right-click the sheet tabs to add sheets. Select Y columns, then choose a plot. Graph menu: "
                  "properties, templates, themes and multi-panel layout pages.")
-        self._describe_menus()
+        self._show_all = []
+        for tm in (f, ws, c0, g, a0, st, tl):  # each shortened menu ends in a way back to the full one
+            tm.addSeparator(); sa = QAction("Show all commands", self); sa.triggered.connect(lambda *_: self.set_simple_menus(False))
+            sa.setStatusTip("Simple Menus is on: some rarely used commands are hidden. Click to show every command."); tm.addAction(sa); self._show_all.append(sa)
+        self._describe_menus(); self.set_simple_menus(self.settings.get("simple_menus", False), save=False)
 
     def commands(self):
         """Every enabled menu command as (menu path, label, description, action)."""
@@ -832,7 +997,7 @@ class Main(QMainWindow):
 
         def walk(menu, path):
             for a in menu.actions():
-                if a.isSeparator() or not a.isEnabled(): continue
+                if a.isSeparator() or (a.isVisible() and not a.isEnabled()) or a in getattr(self, "_show_all", ()): continue  # hidden by Simple Menus = still a command
                 label = a.text().replace("&", "")
                 if a.menu() is not None and a.menu() in subs: walk(a.menu(), path + [label]); continue
                 if label: out.append((" > ".join(path), label, a.statusTip(), a))
@@ -890,13 +1055,40 @@ class Main(QMainWindow):
             if d: a.setStatusTip(d); a.setToolTip(d)
 
     # ---- undo
+    def log_undo(self, owner):
+        """A sheet, matrix or graph recorded an undo step (see sheets.UndoList)."""
+        import weakref
+        if getattr(self, "_undoing", False): return
+        self.undo_log.append(weakref.ref(owner)); del self.undo_log[:-400]; self.redo_log = []
+
+    def _step(self, take, give, do, stack):
+        """Undo or redo the latest step anywhere in the project; show the window it was in. False if there was none."""
+        import shiboken6
+        while take:
+            ref = take.pop(); o = ref()
+            if o is None or not shiboken6.isValid(o) or not getattr(o, stack(o), None): continue  # deleted, or already undone there
+            if (getattr(o, "book", None) or o) not in self.windows(): continue  # its window was closed
+            self._undoing = True
+            try: getattr(o, do)()
+            finally: self._undoing = False
+            give.append(ref); win = getattr(o, "book", None) or o
+            if getattr(o, "book", None) is not None and hasattr(win, "tabs") and win.tabs.indexOf(o) >= 0: win.tabs.setCurrentWidget(o)
+            if win.parentWidget() is not None and self.mdi.activeSubWindow() is not win.parentWidget(): self.mdi.setActiveSubWindow(win.parentWidget())
+            self.statusBar().showMessage(f"{'Undone' if do == 'undo' else 'Redone'}: the last change in {getattr(win, 'name', '')}"
+                                         + (f" / {o.name}" if win is not o else ""), 5000)
+            return True
+        return False
+
     def undo(self):
-        s = self.mdi.activeSubWindow(); w = s.widget() if s else None
+        """Undo the most recent change, in whichever sheet or graph it was made (one history for the whole project)."""
+        if self._step(self.undo_log, self.redo_log, "undo", lambda o: "history" if hasattr(o, "history") else "undo_stack"): return
+        s = self.mdi.activeSubWindow(); w = s.widget() if s else None  # nothing logged: the active window's own history
         if w is None: return
         if w.kind in SHEETED: w.current().undo()
         elif w.kind == "graph": w.undo()
 
     def redo(self):
+        if self._step(self.redo_log, self.undo_log, "redo", lambda o: "redo_stack"): return
         s = self.mdi.activeSubWindow(); w = s.widget() if s else None
         if w is None: return
         if w.kind in SHEETED: w.current().redo()
@@ -908,10 +1100,27 @@ class Main(QMainWindow):
         if meta: b.current().meta.update(meta); b.current().model.refresh()
         return b
 
+    def import_progress(self, fn, min_bytes=5_000_000):
+        """(step, close) for reading a large text file with a progress window and Cancel; (None, no-op) for small files."""
+        if os.path.getsize(fn) < min_bytes: return None, lambda: None
+        from PySide6.QtWidgets import QProgressDialog
+        prog = QProgressDialog(f"Reading {Path(fn).name} ...", "Cancel", 0, 100, self); prog.setWindowTitle("Import")
+        prog.setWindowModality(Qt.WindowModal); prog.setMinimumDuration(400); last = [-1]
+
+        def step(done, size):
+            pc = min(99, int(100 * done / size))
+            if pc != last[0]: last[0] = pc; prog.setValue(pc); QApplication.processEvents()
+            if prog.wasCanceled(): raise InterruptedError("Import cancelled.")
+        return step, lambda: (prog.close(), prog.deleteLater())
+
     def import_wizard(self):
         wiz = ImportWizard(self)
         if not wiz.exec() or not wiz.path.text(): return
-        df, meta = wiz.result_data(); stem = Path(wiz.path.text()).stem
+        step, close = self.import_progress(wiz.path.text())
+        try: df, meta = wiz.result_data(step)
+        except InterruptedError: return self.statusBar().showMessage("Import cancelled: nothing was added.", 6000)
+        finally: close()
+        stem = Path(wiz.path.text()).stem
         target = wiz.target.currentText(); book = self.active("book")
         if target == "New workbook" or book is None:
             self.new_book(df, stem, meta)
@@ -923,7 +1132,11 @@ class Main(QMainWindow):
 
     def import_text(self):
         fn, _ = QFileDialog.getOpenFileName(self, "Import text", "", "Text data (*.csv *.txt *.dat *.tsv);;All (*.*)")
-        if fn: return self.new_book(read_text_table(fn), Path(fn).stem)
+        if not fn: return
+        step, close = self.import_progress(fn)
+        try: return self.new_book(read_text_table(fn, step), Path(fn).stem)
+        except InterruptedError: self.statusBar().showMessage("Import cancelled: nothing was added.", 6000)
+        finally: close()
 
     def import_excel(self, fn=None):
         if not fn:
@@ -1025,6 +1238,7 @@ class Main(QMainWindow):
             except OSError: pass
             raise
         self.setWindowTitle(f"{APP} {VERSION} - {Path(self.project_path).name}"); self.add_recent(self.project_path); self.clear_dirty()
+        self.drop_recovery()
 
     def _write_project(self, target, meta):
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
@@ -1092,6 +1306,8 @@ class Main(QMainWindow):
                     else: sh = b.add_sheet(sst["name"], df)
                     sh.desig.update(sst["desig"]); sh.formulas.update(sst["formulas"]); sh.meta.update(sst.get("meta", {}))
                     sh.mask = {(c, int(r)) for c, r in sst.get("mask", [])}
+                    sh.filters = [str(f) for f in sst.get("filters", [])]
+                    if sh.filters: sh.fmask = {(c, int(r)) for c, r in sst.get("fmask", [])} & sh.mask; sh.apply_filters()
                     sh.cell_formulas = {(c, int(r)): t for c, r, t in sst.get("cells", []) if c in sh.df.columns}; sh.eval_cells()
                     sh.model.refresh()
                 for s in b.sheets: s.eval_cells(); s.model.refresh()  # again, now that every sheet a formula may read is loaded
@@ -1209,11 +1425,23 @@ class Main(QMainWindow):
                           formula=f"{method}: {rng['ref']}", snap=False)
             nout = int(np.nansum(flag == 0))
             if nout: extra = f"; {nout} rows {'not in equilibrium' if rng.get('kind') == 'equilibrium' else 'outside the calibration range'} ({rng['ref']})"
+        if all(isinstance(v, (str, int, float, bool, type(None))) for v in (inputs or {}).values()):  # re-run when the data change
+            flagc = next((str(c) for c in sh.df.columns if str(c).startswith(f"{m['out']} in ")), None) if method in TB.VALID else None
+            sh.ops = [o for o in sh.ops if o.get("col") != name] + [{"kind": "tb", "method": method, "inputs": dict(inputs or {}), "col": name, "flag": flagc, "y": name}]
         if mc:
             labels = {i[1] for i in m["inputs"]}  # errors on P or T only for methods that take them
             num_sd = {k: v for k, v in mc.items() if k not in ("rel", "n") and v and k in labels}
-            sd = TB.monte_carlo(method, cols_in, sh.arr, oxides, len(sh.df), rel=mc["rel"], n=mc.get("n", 500), num_sd=num_sd)
-            sh.add_column(f"1s {m['out']} ({m['unit'].replace('deg C', 'C')})", sd, units=m["unit"].replace("deg C", "°C"),
+            from PySide6.QtWidgets import QProgressDialog
+            nd = int(mc.get("n", 500)); prog = QProgressDialog(f"Monte Carlo uncertainty: {nd} draws...", "Cancel", 0, nd, self)
+            prog.setWindowTitle("Thermobarometry"); prog.setWindowModality(Qt.WindowModal); prog.setMinimumDuration(800)
+
+            def step(i):
+                if i % 10 == 0: prog.setValue(i); QApplication.processEvents()
+                return not prog.wasCanceled()
+            try: sd = TB.monte_carlo(method, cols_in, sh.arr, oxides, len(sh.df), rel=mc["rel"], n=nd, num_sd=num_sd, progress=step)
+            finally: prog.close(); prog.deleteLater()
+            if sd is None: extra += "; Monte Carlo cancelled (no uncertainty column)"
+            else: sh.add_column(f"1s {m['out']} ({m['unit'].replace('deg C', 'C')})", sd, units=m["unit"].replace("deg C", "°C"),
                           formula=f"Monte Carlo, {mc.get('n', 500)} draws, {100 * mc['rel']:g} % relative 1-sigma on each measured input"
                                   + "".join(f", {k.replace(', if no column', '')} ± {v:g}" for k, v in num_sd.items()), snap=False, desig="yErr")
         sh.model.refresh(); sh.changed(); self.mark_dirty()
@@ -1381,8 +1609,9 @@ class Main(QMainWindow):
         self.statusBar().showMessage(f"Discordance filter: {len(rows)} of {int(np.isfinite(dsc).sum())} analyses masked (|D| > {limit:g}%)", 10000)
         return rows
 
-    def pt_solver(self, sh=None, tmethod=None, pmethod=None, inputs=None, p0=10.0):
-        """T and P solved together, row by row, from a thermometer that needs P and a barometer that needs T (or not)."""
+    def pt_solver(self, sh=None, tmethod=None, pmethod=None, inputs=None, p0=10.0, mc=None):
+        """T and P solved together, row by row, from a thermometer that needs P and a barometer that needs T (or not).
+        mc: None, or {"rel": relative 1-sigma of the analyses, "n": draws} for two Monte Carlo 1-sigma columns."""
         from PySide6.QtWidgets import QScrollArea
         from . import thermobaro as TB, mineral as MN
         sh = sh or self.need_book()
@@ -1411,18 +1640,41 @@ class Main(QMainWindow):
             bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel); bb.accepted.connect(d.accept); bb.rejected.connect(d.reject)
             lay = QVBoxLayout(d)
             for w_ in (QLabel("Thermometer (depends on P)"), tp, QLabel("Barometer (may depend on T)"), pp, info): lay.addWidget(w_)
-            f2 = QFormLayout(); f2.addRow("Starting P (kbar)", start); lay.addLayout(f2); lay.addWidget(sc, 1); lay.addWidget(bb)
+            from PySide6.QtWidgets import QCheckBox, QSpinBox, QHBoxLayout
+            mc_on = QCheckBox("Monte Carlo uncertainty (1σ columns for T and P)"); mc_rel = QDoubleSpinBox(); mc_rel.setRange(0.1, 50); mc_rel.setValue(2.0)
+            mc_rel.setSuffix(" % per analysis"); mc_n = QSpinBox(); mc_n.setRange(30, 2000); mc_n.setValue(200); mc_n.setSuffix(" draws")
+            mc_on.setToolTip("Every measured value is varied by the relative 1σ error, independently, and the pair solved again; the columns "
+                             "hold the standard deviation of T and of P. The calibration errors of the two equations come on top.")
+            mc_row = QHBoxLayout(); [mc_row.addWidget(x) for x in (mc_on, mc_rel, mc_n)]; mc_row.addStretch()
+            f2 = QFormLayout(); f2.addRow("Starting P (kbar)", start); lay.addLayout(f2); lay.addWidget(sc, 1); lay.addLayout(mc_row); lay.addWidget(bb)
             if not d.exec(): return
-            tmethod, pmethod, p0, inputs = tp.currentText(), pp.currentText(), start.value(), self._tb_values(widgets); d.deleteLater()
+            tmethod, pmethod, p0, inputs = tp.currentText(), pp.currentText(), start.value(), self._tb_values(widgets)
+            if mc_on.isChecked(): mc = {"rel": mc_rel.value() / 100, "n": mc_n.value()}
+            d.deleteLater()
         real = {str(c): c for c in sh.df.columns}
         T, P, it = TB.solve_pt(tmethod, pmethod, {k: (real.get(v, v) if isinstance(v, str) else v) for k, v in (inputs or {}).items()},
                                sh.arr, oxides, p0)
         tm, pm = TB.METHODS[tmethod], TB.METHODS[pmethod]; used = "; ".join(f"{k} = {v}" for k, v in (inputs or {}).items())
         how = f"Coupled P-T solver: {tmethod} ({tm['ref']}) with {pmethod} ({pm['ref']}); inputs {used}"
         nt = sh.add_column(f"{tm['out']} P-T (C)", T, units="°C", formula=how)
-        npr = sh.add_column(f"{pm['out']} P-T (kbar)", P, units="kbar", formula=how, snap=False)
+        npr = sh.add_column(f"{pm['out']} P-T (kbar)", P, units="kbar", formula=how, snap=False); note = ""
+        if mc:
+            from PySide6.QtWidgets import QProgressDialog
+            nd = int(mc.get("n", 200)); prog = QProgressDialog(f"Monte Carlo uncertainty: {nd} solutions...", "Cancel", 0, nd, self)
+            prog.setWindowTitle("Coupled P-T solver"); prog.setWindowModality(Qt.WindowModal); prog.setMinimumDuration(800)
+
+            def step(i):
+                prog.setValue(i); QApplication.processEvents(); return not prog.wasCanceled()
+            cols_in = {k: (real.get(v, v) if isinstance(v, str) else v) for k, v in (inputs or {}).items()}
+            try: sd = TB.solve_pt_mc(tmethod, pmethod, cols_in, sh.arr, oxides, p0, rel=mc["rel"], n=nd, progress=step)
+            finally: prog.close(); prog.deleteLater()
+            if sd is None: note = "; Monte Carlo cancelled (no uncertainty columns)"
+            else:
+                why = f"Monte Carlo, {nd} solutions, {100 * mc['rel']:g} % relative 1-sigma on each measured input"
+                sh.add_column(f"1s {tm['out']} P-T (C)", sd[0], units="°C", formula=why, snap=False, desig="yErr")
+                sh.add_column(f"1s {pm['out']} P-T (kbar)", sd[1], units="kbar", formula=why, snap=False, desig="yErr")
         sh.model.refresh(); sh.changed(); self.mark_dirty(); ok = np.isfinite(T) & np.isfinite(P)
-        self.statusBar().showMessage(f"P and T solved for {ok.sum()} rows ({it} iterations)" + (f"; {(~ok).sum()} rows blank" if (~ok).any() else ""), 8000)
+        self.statusBar().showMessage(f"P and T solved for {ok.sum()} rows ({it} iterations)" + (f"; {(~ok).sum()} rows blank" if (~ok).any() else "") + note, 8000)
         return nt, npr
 
     # ---- geochronology
@@ -1499,6 +1751,38 @@ class Main(QMainWindow):
     def draw_shape(self, kind):
         g = self.need_graph()
         if g: g.start_draw(kind)
+
+    FORMAT_KEEP = ("title", "xlabel", "ylabel", "xmin", "xmax", "ymin", "ymax", "texts", "points", "series", "legend_pos", "xbreak", "ybreak")
+    FORMAT_PARTS = {"colours": ("palette", "cmap", "background"), "fonts": ("font", "font_size")}
+
+    def layers(self, add=None):
+        """Layer manager of the active graph: more data on it, each with its own right Y axis and / or top X axis.
+        add: a layer dict (see plotbench.layers) to append without the dialog."""
+        g = self.need_graph()
+        if not g: return
+        if add is not None:
+            from .layers import DEFAULT
+            g.snapshot(); g.spec.setdefault("layers", []).append({**DEFAULT, **add}); g.draw(); self.mark_dirty(); return g.spec["layers"]
+        from .layers import LayerManager
+        LayerManager(g).exec(); return g.spec.get("layers", [])
+
+    def copy_format(self):
+        """Remember the active graph's look (fonts, colours, sizes, ticks, legend place) for Paste Format."""
+        g = self.need_graph()
+        if not g: return
+        from .graphs import full_style
+        self._format_clip = {k: v for k, v in full_style(g.spec["style"]).items() if k not in self.FORMAT_KEEP}
+        self.statusBar().showMessage(f"Format of {g.name} copied. Open another graph and choose Graph > Copy / Paste Format > Paste.", 8000)
+        return self._format_clip
+
+    def paste_format(self, what="all"):
+        """Give the active graph the copied look: 'all', 'colours' (palette, colour map, background) or 'fonts' (font and size).
+        Titles, axis ranges and single-curve settings stay as they are. One undo step."""
+        g = self.need_graph(); clip = getattr(self, "_format_clip", None)
+        if not g: return
+        if not clip: return QMessageBox.information(self, APP, "Nothing copied yet. Open the graph whose look you want and choose Copy Format first.")
+        look = clip if what == "all" else {k: clip[k] for k in self.FORMAT_PARTS[what] if k in clip}
+        g.snapshot(); g.spec["style"] = {**g.spec["style"], **look}; g.draw(); self.mark_dirty(); return look
 
     def copy_format_all(self):
         """The active graph's look (Graph Properties: fonts, axes, colours, sizes) given to every other graph; titles and ranges stay."""
@@ -1703,7 +1987,7 @@ class Main(QMainWindow):
         if ptype in GraphWindow.ERRBAR_TYPES:
             emap = self.bind_errors(sh, ys)
             if emap: spec["yerr"] = emap; spec["ys"] = [y for y in ys if sh.desig.get(y) not in self.ERR_ROLES] or ys
-        g = self.add_win(GraphWindow(self, self.uniq("Graph"), spec)); g.draw(); return g
+        g = self.add_win(GraphWindow(self, self.uniq("Graph"), spec)); g.draw(); self._first_hint(True); return g
 
     def _thumb_dir(self):
         return str(user_dir() / "thumbs" / VERSION)
@@ -1720,7 +2004,7 @@ class Main(QMainWindow):
         b = self.active("book"); hint = ""
         if b is not None:
             x, ys = b.current().xy_for_plot(); hint = f"Will plot from {b.name}/{b.current().name}: X = {x or 'row number'}; Y = {', '.join(map(str, ys)) or '(select columns)'}"
-        d = PlotGallery(self, self._thumb_dir(), hint)
+        d = PlotGallery(self, self._thumb_dir(), hint, len(ys) if b is not None else None)
         if not d.exec() or not d.choice: return
         if isinstance(d.choice, tuple) and d.choice[0] == "example":
             from .examples import for_plot
@@ -1738,7 +2022,11 @@ class Main(QMainWindow):
             x, ys = d.columns(); opts = d.options(); self.settings["cmap_opts"] = {k: v for k, v in opts.items() if k not in ("group", "label", "size")}
             save_settings(self.settings); return self.new_graph(b, ptype, x, ys, opts)
         x, ys = b.xy_for_plot()
-        if not ys: return QMessageBox.warning(self, APP, "Select one or more Y columns (click the column headers).")
+        if not ys:
+            nums = [c for c in b.df.columns if c != x and pd.api.types.is_numeric_dtype(b.df[c]) and b.df[c].notna().any()]
+            if not nums: return QMessageBox.warning(self, APP, "This sheet has no numbers to plot yet. Type or import data first.")
+            return self.advise("No Y columns are selected, and none is set as Y.\nClick the column headers to select what to plot.",
+                               [(f"Plot all {len(nums)} number columns", lambda: self.new_graph(b, ptype, x, nums))])
         extra = {}
         if ptype == "Isochron (York regression)":
             from .geochron import SYSTEMS
@@ -1768,7 +2056,11 @@ class Main(QMainWindow):
 
     def need_graph(self):
         g = self.active("graph")
-        if g is None: QMessageBox.warning(self, APP, "Open a graph first.")
+        if g is not None and g.parentWidget() is not None and self.mdi.activeSubWindow() is not g.parentWidget():
+            self.mdi.setActiveSubWindow(g.parentWidget())  # a sheet was in front: the graph the command goes to is shown
+        if g is None:
+            if True: self.advise("This command works on a graph, and there is none yet.\nSelect columns in a worksheet, then choose a plot.",
+                                        [("Open the Plot Gallery", self.show_gallery)])
         return g
 
     def edit_plot(self):
@@ -1820,7 +2112,9 @@ class Main(QMainWindow):
 
     def refresh_graphs(self, sheet):
         for w in self.windows():
-            if w.kind == "graph" and w.spec.get("book") == sheet.book.name and w.spec.get("sheet", sheet.name) == sheet.name:
+            if w.kind != "graph": continue
+            here = lambda d: d.get("book") == sheet.book.name and d.get("sheet", sheet.name) == sheet.name
+            if here(w.spec) or any(here(L) for L in w.spec.get("layers", [])) or any(a.get("kind") == "series" and here(a) for a in w.spec.get("annotations", [])):
                 try: w.draw()
                 except Exception as e: self.statusBar().showMessage(f"{w.name}: {e}", 6000)
 
@@ -2268,6 +2562,21 @@ class Main(QMainWindow):
         if not pm.isNull(): box.setIconPixmap(pm.scaled(96, 96, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         box.exec()
 
+    def tour(self):
+        """Five short notes, each shown beside the part of the window it describes."""
+        from .tour import Tour
+        if getattr(self, "_tour", None) is not None: self._tour.reject()
+        self._tour = Tour(self); self._tour.finished.connect(lambda *_: setattr(self, "_tour", None)); self._tour.show(); return self._tour
+
+    def whats_new(self, force=False):
+        """The release notes of this version: once after an update (never on a first installation), and from the Help menu."""
+        from . import whatsnew
+        first_after_update = self._updated and self.settings.get("last_version") != VERSION
+        if self.settings.get("last_version") != VERSION: self.settings["last_version"] = VERSION; save_settings(self.settings)
+        if force or first_after_update:
+            self._whatsnew = whatsnew.show(self, VERSION); return self._whatsnew
+        return None
+
     def show_start(self):
         """Start page (templates, recent projects, quick actions). It does not block the window: work can start behind it, and it
         closes by itself when a sheet, graph or project opens."""
@@ -2279,6 +2588,7 @@ class Main(QMainWindow):
             if not r or not d.choice: return
             kind, val = d.choice
             if kind == "template": return self.safe(lambda: make_template(self, val))
+            if kind == "example": return self.safe(lambda: self.open_example(val))
             if kind == "recent": return self.safe(lambda: self.open_project(val))
             if val == "show_console": return self.console_dock.show()
             return self.safe(getattr(self, val))
@@ -2447,8 +2757,23 @@ class Main(QMainWindow):
         sheets, self.pending_ops = self.pending_ops, []
         for sh in sheets:
             for op in list(sh.ops):
-                try: self.rerun_fit(sh, op)
+                try: self.rerun_tb(sh, op) if op.get("kind") == "tb" else self.rerun_fit(sh, op)
                 except Exception as e: self.statusBar().showMessage(f"Auto-recalculation of {op.get('y')} failed: {e}", 8000)
+
+    def rerun_tb(self, sh, op):
+        """A thermobarometry column follows its inputs: recalculated (with its range flag) when the sheet changes."""
+        from . import thermobaro as TB
+        if op["col"] not in sh.df.columns: sh.ops.remove(op); return
+        real = {str(c): c for c in sh.df.columns}; cols_in = {k: (real.get(v, v) if isinstance(v, str) else v) for k, v in op["inputs"].items()}
+        ox = lambda prefix=False: TB.phase_oxides(sh.df.columns, sh.arr, prefix)
+        vals = TB.compute(op["method"], cols_in, sh.arr, ox, len(sh.df)); old = sh.arr(op["col"], raw=True)
+        if np.array_equal(np.asarray(vals, float), old, equal_nan=True): return
+        sh.df[op["col"]] = np.asarray(vals, float)
+        if op.get("flag") in sh.df.columns and op["method"] in TB.VALID:
+            flag = TB.in_range(op["method"], vals, {k: (sh.arr(v) if isinstance(v, str) else v) for k, v in cols_in.items() if v is not None}, len(sh.df))
+            sh.df[op["flag"]] = np.where(np.isnan(flag), None, np.where(flag == 1, "yes", "no")).astype(object)
+        sh.model.refresh(); self.schedule_graphs(sh)
+        self.statusBar().showMessage(f"{op['col']} recalculated ({op['method']})", 5000)
 
     def rerun_fit(self, sh, op):
         cfg = op["cfg"]; xc = op["x"]
@@ -3238,6 +3563,81 @@ class Main(QMainWindow):
         if y not in sh.df.columns or (x and x not in sh.df.columns): raise RuntimeError("Column not found in that sheet.")
         return self._annot({"kind": "series", "book": book, "sheet": sheet, "x": x, "y": y, "style": style})
 
+    def send_office(self, kind="docx", every=False, fn=None, open_it=None):
+        """The active graph (or every graph and layout) as a Word document or a PowerPoint presentation: one picture per page or
+        slide at 300 dpi, the window name as caption or slide title. The file is written directly, then opened."""
+        from . import office
+        import io
+        if every: wins = [w for w in self.windows() if w.kind in ("graph", "layout")]
+        else:
+            s = self.mdi.activeSubWindow(); g = s.widget() if s else None
+            if g is None or g.kind not in ("graph", "layout"): g = self.need_graph()
+            wins = [g] if g else []
+        if not wins: return
+        if fn is None:
+            label = "Word document (*.docx)" if kind == "docx" else "PowerPoint presentation (*.pptx)"
+            fn, _ = QFileDialog.getSaveFileName(self, "Send to " + ("Word" if kind == "docx" else "PowerPoint"), f"{wins[0].name if not every else 'graphs'}.{kind}", label)
+            if not fn: return
+            open_it = True if open_it is None else open_it
+        pics = []
+        for g in wins:
+            png, (wi, hi) = self.clean_png(g, 300); pics.append((png, float(wi), float(hi), g.name))
+        try: (office.write_docx if kind == "docx" else office.write_pptx)(fn, pics)
+        except OSError as e:
+            QMessageBox.warning(self, APP, f"Could not write {fn}:\n{e}\n\nIf the file is open in Word or PowerPoint, close it there and try again, or choose another name.")
+            return None
+        self.statusBar().showMessage(f"{len(pics)} graph{'s' if len(pics) != 1 else ''} written to {fn}", 8000)
+        if open_it:
+            try: os.startfile(fn)  # Windows; elsewhere the file is simply left for the user to open
+            except (AttributeError, OSError): pass
+        return fn
+
+    def copy_analyses(self, src=None, targets=None):
+        """Repeat this sheet's calculated columns in other sheets that have the same input columns: the column formulas and the
+        thermobarometry columns (which then recalculate there too). Returns {sheet: [columns made]}."""
+        src = src or self.need_book()
+        if not src: return
+        jobs = [("formula", c, e) for c, e in src.formulas.items()] + [("tb", o["method"], o["inputs"]) for o in src.ops if o.get("kind") == "tb"]
+        if not jobs: return QMessageBox.information(self, APP, "This sheet has no column formulas or thermobarometry columns to repeat elsewhere.")
+        others = [s for w in self.windows() if w.kind == "book" for s in w.sheets if s is not src]
+        if targets is None:
+            if not others: return QMessageBox.information(self, APP, "There is no other worksheet to repeat the analyses in.")
+            d = QDialog(self); d.setWindowTitle("Copy analyses to other sheets"); lst = QListWidget(); lay = QVBoxLayout(d)
+            lay.addWidget(QLabel(f"{len(jobs)} calculated column(s) of {src.book.name}/{src.name} will be made in the ticked sheets.\n"
+                                 "A sheet is skipped for a calculation whose input columns it does not have."))
+            for s in others:
+                it = QListWidgetItem(f"{s.book.name}/{s.name}"); it.setFlags(it.flags() | Qt.ItemIsUserCheckable); it.setCheckState(Qt.Checked); lst.addItem(it)
+            bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel); bb.accepted.connect(d.accept); bb.rejected.connect(d.reject)
+            lay.addWidget(lst); lay.addWidget(bb)
+            if not d.exec(): return
+            targets = [s for i, s in enumerate(others) if lst.item(i).checkState() == Qt.Checked]
+        made = {}; skipped = 0
+        for t in targets:
+            names = []; t.snap()
+            for kind, a, b in jobs:
+                try:
+                    if kind == "formula":
+                        if a not in t.df.columns: t.add_column(a, snap=False)
+                        t.formulas[a] = b; t.recalc(); names.append(a)
+                    else:
+                        need = [v for v in b.values() if isinstance(v, str)]
+                        if any(v not in map(str, t.df.columns) for v in need): skipped += 1; continue
+                        names.append(self.thermobarometry(t, a, dict(b)))
+                except Exception: skipped += 1; t.formulas.pop(a, None) if kind == "formula" else None
+            t.model.refresh(); t.changed(); made[f"{t.book.name}/{t.name}"] = names
+        self.mark_dirty()
+        self.statusBar().showMessage(f"Analyses repeated in {len(made)} sheet(s)" + (f"; {skipped} calculation(s) skipped (input columns missing)" if skipped else ""), 9000)
+        return made
+
+    @staticmethod
+    def clean_png(g, dpi):
+        """(PNG bytes, size in inches) of a graph or layout drawn afresh at its on-screen size: none of the window's temporary marks
+        (selected-text outline, shape handles, data-reader box) can appear in it."""
+        import io
+        from matplotlib.figure import Figure
+        size = tuple(g.fig.get_size_inches()); fig = Figure(figsize=size, layout="constrained" if g.kind == "graph" else None)
+        g.render(fig); buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=dpi, facecolor=fig.get_facecolor()); return buf.getvalue(), size
+
     def copy_graph(self):
         s = self.mdi.activeSubWindow(); g = s.widget() if s else None
         if g is None or g.kind not in ("graph", "layout"): g = self.need_graph()
@@ -3245,7 +3645,7 @@ class Main(QMainWindow):
         import io
         from PySide6.QtGui import QImage
         dpi = min(float(self.settings.get("export_opts", {}).get("dpi", 200)), 600)  # clipboard images above 600 dpi get unwieldy
-        buf = io.BytesIO(); g.fig.savefig(buf, format="png", dpi=dpi); img = QImage.fromData(buf.getvalue(), "PNG")
+        img = QImage.fromData(self.clean_png(g, dpi)[0], "PNG")
         QApplication.clipboard().setImage(img); self.statusBar().showMessage("Graph copied: paste it into Word or PowerPoint", 6000); return img
 
     def export_all_graphs(self, folder=None, ext=None):
@@ -3608,7 +4008,9 @@ def main():
     w = Main(); w.show()
     if splash: splash.finish(w)
     if w.settings.get("console_at_start"): w.console_dock.show()
-    if w.settings.get("show_start", True) and not (len(sys.argv) > 1 and sys.argv[1].lower().endswith(".pbp")): w.show_start()
+    recovered = w.offer_recovery()
+    w.whats_new()
+    if w.settings.get("show_start", True) and not recovered and not (len(sys.argv) > 1 and sys.argv[1].lower().endswith(".pbp")): w.show_start()
     if len(sys.argv) > 1 and sys.argv[1].lower().endswith(".pbp"):
         w.safe(lambda: w.open_project(sys.argv[1]))  # opened via file association
     sys.exit(app.exec())

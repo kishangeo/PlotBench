@@ -617,6 +617,27 @@ METHODS.update({
 # Calibration domains stated by the authors (or in the method notes): the result, and numeric inputs such as P, outside these
 # ranges are flagged. Equilibrium tests use the accepted equilibrium window instead. Methods not listed have no recorded range.
 VALID = {
+    # ranges below were read from the papers' own abstracts or text; methods whose range could not be confirmed there have no entry
+    "Zr-in-rutile (Watson et al. 2006)": {"out": (470, 1450), "ref": "experiments at 675-1450 C and 1-1.4 GPa, natural rutiles from 470 C (Watson et al. 2006)"},
+    "Zr-in-rutile (Ferry & Watson 2007)": {"out": (470, 1450), "ref": "calibrated on the experiments (675-1450 C) and natural rutiles (from 470 C) of Watson et al. (2006) Tables 4-5, plus new runs at 800-1350 C, nearly all at 1 GPa (Ferry & Watson 2007)"},
+    "En-in-clinopyroxene T (Nimis & Taylor 2000)": {"out": (850, 1500), "P (kbar)": (0, 60), "ref": "experiments at 850-1500 C and 0-60 kbar (Nimis & Taylor 2000)"},
+    "Cr-in-clinopyroxene P (Nimis & Taylor 2000)": {"out": (0, 60), "T (C), if no column": (850, 1500), "ref": "experiments at 850-1500 C and 0-60 kbar (Nimis & Taylor 2000)"},
+    "Al-in-hornblende (Hollister et al. 1987)": {"out": (2, 8), "ref": "pressure range 2-8 kbar (Hollister et al. 1987, abstract)"},
+    "Al-in-hornblende (Hammarstrom & Zen 1986)": {"out": (1, 8), "ref": "calibration plutons at 1-2 kbar and about 8 kbar (Hammarstrom & Zen 1986)"},
+    "Garnet-clinopyroxene Fe-Mg (Ellis & Green 1979)": {"out": (750, 1300), "P (kbar)": (24, 30), "ref": "experiments at 24-30 kbar and 750-1300 C (Ellis & Green 1979, abstract)"},
+    "Two-pyroxene (Wells 1977)": {"out": (800, 1700), "ref": "reproduces the diopside-enstatite gap from 800 to 1700 C (Wells 1977, abstract)"},
+    "Two-pyroxene (Wood & Banno 1973)": {"out": (785, 1500), "ref": "experimental data of their Table 3, 785-1500 C (Wood & Banno 1973)"},
+    "Garnet-orthopyroxene Al (Harley & Green 1982)": {"out": (5, 20), "T (C), if no column": (800, 1200), "ref": "experiments at 800-1200 C and 5-20 kbar (Harley & Green 1982, abstract)"},
+    "Garnet-orthopyroxene Al (Nickel & Green 1985)": {"out": (20, 40), "T (C), if no column": (1000, 1400), "ref": "experiments at 20-40 kbar and 1000-1400 C (Nickel & Green 1985)"},
+    "Zircon saturation (Boehnke et al. 2013)": {"out": (750, 1020), "ref": "experiments of their Table 3, 750-1020 C and 1.2-25 kbar (Boehnke et al. 2013)"},
+    "Zircon oxybarometer dFMQ (Loucks et al. 2020)": {"out": (-4.9, 2.9), "ref": "calibrated on zircon populations from FMQ-4.9 to FMQ+2.9 (Loucks et al. 2020, abstract)"},
+    "Liquid T from MgO (Putirka 2008 Eq 13)": {"out": (729, 2000), "ref": "Eqs 13-15: P 0.0001-14.4 GPa, T 729-2000 C, SiO2 31.5-73.6 wt% (Putirka 2008, p. 73)"},
+    "Liquid T (Putirka 2008 Eq 15)": {"out": (729, 2000), "P (kbar)": (0, 144), "ref": "Eqs 13-15: P 0.0001-14.4 GPa, T 729-2000 C, SiO2 31.5-73.6 wt% (Putirka 2008, p. 73)"},
+    "Olivine-liquid (Beattie 1993; Putirka 2008 Eq 19)": {"out": (1060, 1860), "P (kbar)": (0, 40), "ref": "experiments at 1060-1860 C, vacuum to 4 GPa (Beattie 1993)"},
+    "Olivine-liquid, hydrous (Putirka 2008 Eq 22)": {"out": (965, 2080), "P (kbar)": (0, 155), "ref": "the 993 experiments behind Eq 4 of Putirka et al. (2007); its test data span 0.0001-15.5 GPa and 965-2080 C"},
+    "Clinopyroxene-liquid P (Putirka 2008 Eq 31)": {"out": (0, 40), "ref": "global calibration without experiments above 40 kbar (Putirka 2008, p. 91)"},
+    "Clinopyroxene-only P (Putirka 2008 Eq 32a)": {"out": (0, 80), "ref": "experiments from 0.001 to 80 kbar (Putirka 2008, p. 91)"},
+    "Clinopyroxene-liquid T (Putirka 2008 Eq 33)": {"P (kbar)": (0, 70), "out": (-float("inf"), float("inf")), "ref": "global calibration on experiments below 70 kbar (Putirka 2008, p. 94)"},
     "Ti-in-zircon (Ferry & Watson 2007)": {"out": (580, 1070), "ref": "experiments and natural zircon, 580-1070 C"},
     "Ti-in-quartz (Wark & Watson 2006)": {"out": (600, 1000), "ref": "experiments at 600-1000 C, 10 kbar"},
     "Ti-in-quartz (Thomas et al. 2010)": {"out": (700, 940), "P (kbar)": (5, 20), "ref": "experiments at 700-940 C, 5-20 kbar"},
@@ -651,7 +672,7 @@ def in_range(method, values, inputs, n_rows):
     return np.where(np.isfinite(vals), ok.astype(float), np.nan)
 
 
-def monte_carlo(method, columns, sheet_arr, sheet_oxides, n_rows=None, rel=0.02, n=500, num_sd=None, seed=1):
+def monte_carlo(method, columns, sheet_arr, sheet_oxides, n_rows=None, rel=0.02, n=500, num_sd=None, seed=1, progress=None):
     """Standard deviation (per row) of a method's result when every measured input (columns, oxide analyses) carries a relative
     1-sigma error rel (0.02 = 2 %), drawn n times independently; num_sd: {numeric input: absolute 1-sigma}, e.g. {"P (kbar)": 1}.
     Inputs are perturbed independently (no covariance between oxides or phases), so this is a first estimate of the analytical part
@@ -667,7 +688,8 @@ def monte_carlo(method, columns, sheet_arr, sheet_oxides, n_rows=None, rel=0.02,
     def column(c):
         a = np.asarray(sheet_arr(c), float)
         return a + absolute[c] * rs.standard_normal(a.shape) if c in absolute else noisy(a)
-    for _ in range(int(n)):
+    for it in range(int(n)):
+        if progress is not None and progress(it) is False: return None  # stopped by the user: no half-made estimate
         arr = column
 
         def ox(prefix=False):
@@ -706,6 +728,31 @@ def solve_pt(tmethod, pmethod, columns, sheet_arr, sheet_oxides, p0=10.0, n_iter
     with np.errstate(invalid="ignore"): off = ~(np.abs(compute(pmethod, tcols(T), sheet_arr, sheet_oxides) - P) < 10 * tol)
     T, P = np.array(T, float), np.array(np.broadcast_to(P, T.shape), float); T[off] = np.nan; P[off] = np.nan
     return T, P, it
+
+
+def solve_pt_mc(tmethod, pmethod, columns, sheet_arr, sheet_oxides, p0=10.0, rel=0.02, n=200, seed=1, progress=None):
+    """1-sigma of the coupled P-T solution (per row) when every measured input carries a relative 1-sigma error rel: the pair is
+    solved n times, each time with all columns and oxide analyses redrawn once (the same noisy values through all iterations of
+    one solution). Returns (sd of T, sd of P), or None when progress(i) returned False. Inputs are varied independently, so this is
+    the analytical part only; the calibration errors of the two equations come on top."""
+    rs = np.random.default_rng(seed); base = {}; Ts, Ps = [], []
+    for it in range(int(n)):
+        if progress is not None and progress(it) is False: return None
+        ca, co = {}, {}
+
+        def arr(c, ca=ca):
+            if c not in ca: a = np.asarray(sheet_arr(c), float); ca[c] = a * (1 + rel * rs.standard_normal(a.shape))
+            return ca[c]
+
+        def ox(prefix=False, co=co):
+            k = repr(prefix)
+            if k not in base: base[k] = sheet_oxides(prefix)
+            if k not in co: co[k] = {e: np.asarray(v, float) * (1 + rel * rs.standard_normal(np.shape(v))) for e, v in base[k].items()}
+            return co[k]
+        with np.errstate(all="ignore"): T, P, _ = solve_pt(tmethod, pmethod, columns, arr, ox, p0)
+        Ts.append(T); Ps.append(P)
+    with np.errstate(all="ignore"), __import__("warnings").catch_warnings():
+        __import__("warnings").simplefilter("ignore"); return np.nanstd(np.array(Ts), axis=0, ddof=1), np.nanstd(np.array(Ps), axis=0, ddof=1)
 
 
 # Brey, Kohler & Nickel (1990, J Petrol 31, 1313, Table 2): garnet-lherzolite runs (run, P kbar, T C, opx Ca Al Cr Na Mg#, garnet XCa Al

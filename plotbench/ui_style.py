@@ -23,10 +23,10 @@ def arrows(theme):
     col = palette(theme)["text"]; d = os.path.join(tempfile.gettempdir(), "plotbench_arrows"); out = {}
     try: os.makedirs(d, exist_ok=True)
     except OSError: pass
-    for name, pts in (("down", "3,6 8,11 13,6"), ("up", "3,10 8,5 13,10"), ("right", "6,3 11,8 6,13")):
+    for name, pts in (("down", "3,6 8,11 13,6"), ("up", "3,10 8,5 13,10"), ("right", "6,3 11,8 6,13"), ("tick", "3,8.5 6.5,12 13,4.5")):
         f = os.path.join(d, f"{name}_{theme}.svg").replace("\\", "/")
         svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><polyline points="{pts}" fill="none" '
-               f'stroke="{col}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+               f'stroke="{"#ffffff" if name == "tick" else col}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
         try:  # a locked or read-only temp folder must not stop the program: the arrows are then simply missing
             if not os.path.exists(f) or _read(f) != svg:
                 with open(f, "w") as h: h.write(svg)
@@ -82,7 +82,7 @@ QToolButton::menu-button {{ border: none; width: 14px; }}
 QToolButton::menu-arrow {{ image: url("{ar['down']}"); width: 10px; height: 10px; }}
 QComboBox QAbstractItemView {{ background: {c['raised']}; border: 1px solid {c['border']}; selection-background-color: {a}; selection-color: white; }}
 QCheckBox::indicator {{ width: 15px; height: 15px; border-radius: 4px; border: 1px solid {c['border']}; background: {c['base']}; }}
-QCheckBox::indicator:checked {{ background: {a}; border-color: {a}; }}
+QCheckBox::indicator:checked {{ background: {a}; border-color: {a}; image: url("{ar['tick']}"); }}
 QTabWidget::pane {{ border: 1px solid {c['border']}; border-radius: 8px; top: -1px; background: {c['panel']}; }}
 QTabBar::tab {{ background: transparent; padding: 6px 14px; margin-right: 2px; border-top-left-radius: 7px; border-top-right-radius: 7px; color: {c['muted']}; }}
 QTabBar::tab:selected {{ background: {c['panel']}; color: {c['text']}; border: 1px solid {c['border']}; border-bottom: 2px solid {a}; }}

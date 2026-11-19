@@ -191,6 +191,145 @@ class Audit1302Tests(unittest.TestCase):
         self.assertEqual(f[0], 0.0)  # 700 C is below the 900-1400 C calibration, whatever the number box says
 
 
+class ShapeEditTests(unittest.TestCase):
+    """Drawn shapes: click-to-place regions and on-canvas editing with handles."""
+
+    def test_region_nodes_and_handle_editing(self):
+        from plotbench import shapes as S
+        w = main_window(); sh = w.new_book(pd.DataFrame({"x": np.linspace(0, 10, 11), "y": np.linspace(0, 100, 11)}), "T").current()
+        g = w.new_graph(sh, "Scatter", "x", ["y"]); QA.processEvents()
+
+        class Ev:
+            def __init__(s, x, y, button=1, dbl=False, key=None):
+                s.x, s.y, s.button, s.dblclick, s.key = float(x), float(y), button, dbl, key; ax = g._plot_axes()[0]; s.inaxes = ax
+                s.xdata, s.ydata = ax.transData.inverted().transform((x, y)); s.guiEvent = None; s.canvas = g.canvas
+
+        def px(x, y): g.canvas.draw(); return g._plot_axes()[0].transData.transform((x, y))
+        g.start_draw("region"); t = g._drawing
+        for q in ((2, 20), (5, 80), (8, 20), (9, 90)): t.press(Ev(*px(*q)))
+        t.key(Ev(0, 0, key="backspace")); self.assertEqual(len(t.pts), 3)
+        t.press(Ev(*px(2.02, 20.3))); a = g.spec["annotations"][0]  # a click on the first node closes the region
+        self.assertEqual((a["kind"], a["smooth"], len(a["points"])), ("region", True, 3)); self.assertIsNone(g._drawing)
+        n = len(g.history); g.edit_handles(0); e = g._drawing
+        e.press(Ev(*px(5, 80))); e.move(Ev(*px(5, 95))); e.release(Ev(0, 0)); self.assertAlmostEqual(a["points"][1][1], 95, delta=0.5)
+        mid = g._plot_axes()[0].transData.transform(S.smooth_closed(a["points"], g._plot_axes()[0]))[8]
+        e.press(Ev(*mid, dbl=True)); e.release(Ev(0, 0)); self.assertEqual(len(a["points"]), 4)
+        e.key(Ev(0, 0, key="delete")); self.assertEqual(len(a["points"]), 3)
+        e.key(Ev(0, 0, key="enter")); self.assertIsNone(g._drawing); self.assertEqual(len(g.history), n + 1)  # one undo step
+        g.spec["annotations"].append({"kind": "rect", "points": [[2.0, 40.0], [6.0, 60.0]], **S.DEFAULT}); g.draw(); g.edit_handles(1); e = g._drawing
+        hs = {k: (x, y) for k, x, y in e.handles()}; self.assertEqual(len(hs), 9)
+        e.press(Ev(*hs[("box", 1, 1)])); e.move(Ev(*px(8, 70))); e.release(Ev(0, 0))
+        p = np.array(g.spec["annotations"][1]["points"]); self.assertTrue(np.allclose([p[:, 0].max(), p[:, 1].max()], [8, 70], atol=0.3))
+        c = e._box()[0]; rot = {k: (x, y) for k, x, y in e.handles()}[("rot",)]; e.press(Ev(*rot)); e.move(Ev(c[0] - 50, c[1] + 50)); e.release(Ev(0, 0))
+        self.assertAlmostEqual(g.spec["annotations"][1]["angle"], 45, delta=1); e.stop(); close(w)
+
+
+class SimpleMenuTests(unittest.TestCase):
+    def test_hidden_commands_stay_searchable_and_come_back(self):
+        w = main_window(); total = len(w.commands()); n = w.set_simple_menus(True, save=False); self.assertGreater(n, 100)
+        self.assertEqual(len(w.commands()), total)  # hidden from the menus, not from the search
+        hit = w.search_commands("pivot table"); self.assertTrue(hit and not hit[0][3].isVisible())
+        self.assertTrue(all(c[3].isVisible() for c in w.commands() if not c[3].shortcut().isEmpty()))  # shortcuts keep working
+        w.set_simple_menus(False, save=False); self.assertTrue(w.search_commands("pivot table")[0][3].isVisible()); close(w)
+
+
+class UsabilityTests(unittest.TestCase):
+    def test_filter_masks_rows_and_is_undone(self):
+        w = main_window(); sh = w.new_book(pd.DataFrame({"a": [1.0, 2, 3, 4], "t": ["x", "y", "x", "y"]}), "F").current()
+        sh.set_mask([("a", 3)], True); self.assertEqual(sh.set_filter('a > 1 and t == "x"'), 1)
+        self.assertTrue(np.isnan(sh.arr("a")[[0, 1, 3]]).all()); self.assertRaises(Exception, sh.set_filter, "nope > 1")
+        sh.clear_filter(); self.assertEqual(sh.mask, {("a", 3)}); sh.undo(); self.assertEqual(len(sh.filters), 1); close(w)
+
+    def test_selection_statistics(self):
+        from PySide6.QtCore import QItemSelection, QItemSelectionModel
+        from plotbench.sheets import HEAD
+        w = main_window(); sh = w.new_book(pd.DataFrame({"a": [1.0, 2, 3, 4], "t": ["x", "y", "x", "y"]}), "S").current(); m = sh.model
+        sh.view.selectionModel().select(QItemSelection(m.index(HEAD, 0), m.index(HEAD + 3, 1)), QItemSelectionModel.ClearAndSelect)
+        st = sh.selection_stats(); self.assertEqual((st["Count"], st["Sum"], st["Max"]), (4, 10.0, 4.0)); close(w)
+
+    def test_axis_bar_sets_range_once_per_undo(self):
+        w = main_window(); sh = w.new_book(pd.DataFrame({"x": [1.0, 2, 3], "y": [1.0, 4, 9]}), "A").current(); g = w.new_graph(sh, "Line", "x", ["y"])
+        g.select_object("y"); n = len(g.history); g.obar.hi.setText("20"); g.obar.set_limit("max", g.obar.hi)
+        self.assertEqual(g.spec["style"]["ymax"], "20"); self.assertEqual(len(g.history), n + 1); self.assertEqual(g.bars.currentIndex(), 2)
+        g.obar.hi.setText("x"); g.obar.set_limit("max", g.obar.hi); self.assertEqual(g.spec["style"]["ymax"], "20")
+        g.select_object("legend"); g.obar.show_leg.setChecked(False); self.assertEqual(g.spec["style"]["legend"], "none"); close(w)
+
+    def test_thermobarometry_column_follows_its_input(self):
+        w = main_window(); sh = w.new_book(pd.DataFrame({"Ti (ppm)": [5.0, 10.0]}), "Z").current()
+        name = w.thermobarometry(sh, "Ti-in-zircon (Ferry & Watson 2007)", {"Ti (ppm)": "Ti (ppm)", "a SiO2": 1.0, "a TiO2": 1.0}); t0 = sh.arr(name).copy()
+        sh.df.loc[0, "Ti (ppm)"] = 50.0; sh.changed(); w.run_ops(); self.assertGreater(sh.arr(name)[0], t0[0] + 50); self.assertAlmostEqual(sh.arr(name)[1], t0[1]); close(w)
+
+    def test_recovery_copy_written_and_removed(self):
+        w = main_window(); w.dirty = False; self.assertIsNone(w.autosave())
+        if w._autosaves:  # another PlotBench on this machine may hold the recovery lock
+            w.mark_dirty(); p = w.autosave(); self.assertTrue(p.exists()); w.drop_recovery(); self.assertFalse(p.exists())
+        close(w)
+
+
+class SecondRoundTests(unittest.TestCase):
+    def test_layer_has_its_own_axis_and_joins_the_legend(self):
+        w = main_window(); t = np.arange(10.0); sh = w.new_book(pd.DataFrame({"t": t, "a": t, "b": 1000 - t}), "L").current()
+        g = w.new_graph(sh, "Line", "t", ["a"]); w.mdi.setActiveSubWindow(g.parentWidget()); w.layers(add={"book": "L", "sheet": "Sheet1", "x": "t", "ys": ["b"]}); g.canvas.draw()
+        lay = [a for a in g.fig.axes if getattr(a, "_pb_layer", False)]; self.assertEqual(len(lay), 1); self.assertGreater(lay[0].get_ylim()[0], 900)
+        self.assertEqual([x.get_text() for x in g.fig.axes[0].get_legend().get_texts()], ["a", "b"]); g.undo(); self.assertFalse(g.spec.get("layers")); close(w)
+
+    def test_undo_follows_the_order_of_changes_across_windows(self):
+        w = main_window(); a = w.new_book(pd.DataFrame({"x": [1.0], "y": [1.0]}), "A").current(); b = w.new_book(pd.DataFrame({"x": [1.0], "y": [5.0]}), "B").current()
+        a.snap(); a.df.loc[0, "y"] = 100.0; b.snap(); b.df.loc[0, "y"] = 200.0; w.mdi.setActiveSubWindow(a.book.parentWidget())
+        w.undo(); self.assertEqual((a.df.loc[0, "y"], b.df.loc[0, "y"]), (100.0, 5.0)); w.undo(); self.assertEqual(a.df.loc[0, "y"], 1.0)
+        w.redo(); w.redo(); self.assertEqual((a.df.loc[0, "y"], b.df.loc[0, "y"]), (100.0, 200.0)); close(w)
+
+    def test_office_files_are_well_formed(self):
+        import zipfile
+        import xml.dom.minidom as MD
+        w = main_window(); sh = w.new_book(pd.DataFrame({"x": [1.0, 2], "y": [1.0, 4]}), "O").current(); w.new_graph(sh, "Line", "x", ["y"])
+        for kind in ("docx", "pptx"):
+            with zipfile.ZipFile(w.send_office(kind, True, str(TMP / f"o.{kind}"))) as z:
+                self.assertIsNone(z.testzip()); [MD.parseString(z.read(n)) for n in z.namelist() if n.endswith((".xml", ".rels"))]
+                self.assertEqual(len([n for n in z.namelist() if n.endswith(".png")]), 1)
+        close(w)
+
+    def test_fit_library_and_new_ranges(self):
+        from plotbench import fitlib, thermobaro as TB, analysis as A
+        fitlib._demo(); self.assertGreaterEqual(len(A.MODELS), 72)
+        self.assertEqual(list(TB.in_range("Zr-in-rutile (Watson et al. 2006)", [400.0, 800.0, 1500.0], {}, 3)), [0.0, 1.0, 0.0])
+        self.assertEqual(list(TB.in_range("En-in-clinopyroxene T (Nimis & Taylor 2000)", [1000.0, 1000.0], {"P (kbar)": np.array([30.0, 70.0])}, 2)), [1.0, 0.0])
+        self.assertEqual(list(TB.in_range("Al-in-hornblende (Hollister et al. 1987)", [1.0, 5.0], {}, 2)), [0.0, 1.0])
+
+
+class Audit1310Tests(unittest.TestCase):
+    def test_emg_stays_finite_for_nearly_symmetric_peaks(self):
+        from plotbench import fitlib
+        y = fitlib._emg(np.linspace(0, 10, 50), 0.0, 5.0, 1.0, 1.0, 0.02); self.assertTrue(np.isfinite(y).all()); self.assertAlmostEqual(float(y.max()), 0.3989, places=2)
+
+    def test_layer_without_y_and_bars_on_repeated_x(self):
+        w = main_window(); sh = w.new_book(pd.DataFrame({"x": [1.0, 1.0, 2.0, 3.0], "y": [1.0, 2.0, 3.0, 4.0]}), "L").current()
+        g = w.new_graph(sh, "Line", "x", ["y"]); w.mdi.setActiveSubWindow(g.parentWidget())
+        w.layers(add={"book": "L", "sheet": "Sheet1", "x": "x", "ys": []}); g.canvas.draw()  # no crash; said in the corner
+        self.assertTrue(any("skipped" in t.get_text() for t in g.fig.axes[0].texts))
+        g.spec["layers"] = [{"book": "L", "sheet": "Sheet1", "x": "x", "ys": ["y"], "type": "Column", "yaxis": "right", "xaxis": "bottom"}]; g.draw()
+        bars = [p for a in g.fig.axes if getattr(a, "_pb_layer", False) for p in a.patches]; self.assertTrue(bars and min(p.get_width() for p in bars) > 0.5)
+        close(w)
+
+    def test_office_and_clipboard_images_carry_no_selection_marks(self):
+        w = main_window(); sh = w.new_book(pd.DataFrame({"x": [1.0, 2], "y": [1.0, 4]}), "O").current(); g = w.new_graph(sh, "Line", "x", ["y"]); g.canvas.draw()
+        clean = w.clean_png(g, 100)[0]; g.select_text("0|@xlabel"); self.assertTrue(g._tsel_marks)
+        self.assertEqual(w.clean_png(g, 100)[0], clean)  # the red outline of the selected text is not in it
+        locked = TMP / "locked.docx"; locked.mkdir(exist_ok=True)  # a folder in the way stands for a file Word holds open
+        from unittest import mock
+        with mock.patch.object(M.QMessageBox, "warning") as warn: self.assertIsNone(w.send_office("docx", False, str(locked)))
+        warn.assert_called_once(); close(w)
+
+    def test_right_click_does_not_start_a_drag_shape(self):
+        w = main_window(); sh = w.new_book(pd.DataFrame({"x": [0.0, 10], "y": [0.0, 10]}), "R").current(); g = w.new_graph(sh, "Line", "x", ["y"]); g.canvas.draw()
+        w.mdi.setActiveSubWindow(g.parentWidget()); w.draw_shape("rect"); t = g._drawing; ax = g._plot_axes()[0]
+
+        class E:
+            inaxes, xdata, ydata, dblclick, key = ax, 2.0, 2.0, False, None
+            def __init__(s, b): s.button = b
+        t.press(E(2)); self.assertFalse(t.down); t.press(E(3)); self.assertIsNone(g._drawing); self.assertFalse(g.spec.get("annotations")); close(w)
+
+
 class ExportTests(unittest.TestCase):
     def test_latex_numbers_masks_labels(self):
         w = main_window()

@@ -95,7 +95,7 @@ def apply_post(fig, st):
     from .textfmt import rich
     if st["title"]: ax.set_title(rich(st["title"]))
     if st["xlabel"]:
-        for a in ([b for b in axes if b.get_xlabel()] or [ax]): a.set_xlabel(rich(st["xlabel"]))  # bottom panels of Harker / stacked plots
+        for a in ([b for b in axes if b.get_xlabel() and not getattr(b, "_pb_layer", False)] or [ax]): a.set_xlabel(rich(st["xlabel"]))  # bottom panels of Harker / stacked plots
     if st["ylabel"]: ax.set_ylabel(rich(st["ylabel"]))
     if ax.name == "rectilinear":
         for axis in ("x", "y"):
@@ -117,11 +117,12 @@ def apply_post(fig, st):
             if ls is not None: ln.set_linestyle(ls)
         _series_overrides(a, st, start); start += len(_data_artists(a))
         leg = a.get_legend()
-        if st["legend"] == "none":
+        if getattr(a, "_pb_layer", False): pass  # layer axes have no legend of their own
+        elif st["legend"] == "none":
             if leg: leg.remove()
         elif getattr(a, "_pb_custom_legend", False):
             if leg is not None and st["legend"] != "best": leg.set_loc(st["legend"]) if hasattr(leg, "set_loc") else None
-        elif (leg and a.get_legend_handles_labels()[1]) or len(a.get_legend_handles_labels()[1]) > 1:
+        elif (leg and a.get_legend_handles_labels()[1]) or len(a.get_legend_handles_labels()[1]) + sum(1 for b in fig.axes if getattr(b, "_pb_layer_of", None) is a for _ in b.get_legend_handles_labels()[1]) > 1:
             if st["legend"] == "outside right": _legend(a, loc="upper left", bbox_to_anchor=(1.02, 1))
             else: _legend(a, loc=st["legend"])
         pos = (st.get("legend_pos") or {}).get(str(ai)); leg = a.get_legend()
@@ -182,7 +183,11 @@ def _series_overrides(ax, st, start=None):
 
 def _legend(ax, **kw):
     """Legend of the visible curves only (curves hidden in Plot Details are left out)."""
-    h, l = ax.get_legend_handles_labels(); keep = [(hh, ll) for hh, ll in zip(h, l) if getattr(hh, "get_visible", lambda: True)()]
+    h, l = ax.get_legend_handles_labels()
+    if not getattr(ax, "_pb_layer", False):  # curves of the layers (their own axes) are listed in the main legend
+        from .layers import layer_handles
+        h2, l2 = layer_handles(ax); h, l = h + h2, l + l2
+    keep = [(hh, ll) for hh, ll in zip(h, l) if getattr(hh, "get_visible", lambda: True)()]
     if keep: return ax.legend(*zip(*keep), **kw)
 
 
@@ -418,6 +423,7 @@ class _AspectHost(QWidget):
         self.resizeEvent(QResizeEvent(self.size(), self.size()))
 
 
+PANEL_FOLDED = ["Draw", "Add", "Arrange", "Analyse", "Output"]  # folded until the user opens them (then remembered)
 GRAPH_SHORTCUTS = [  # (group, label, Main method or callable on the main window); the panel uses whatever width is spare
     ("View", "Zoom in", lambda m: m.need_graph() and m.need_graph().zoom_by(0.8)),
     ("View", "Zoom out", lambda m: m.need_graph() and m.need_graph().zoom_by(1.25)),
@@ -429,10 +435,10 @@ GRAPH_SHORTCUTS = [  # (group, label, Main method or callable on the main window
     ("Format", "Group samples", "group_samples"), ("Format", "Copy format to all graphs", "copy_format_all"),
     ("Draw", "Line", lambda m: m.draw_shape("line")), ("Draw", "Arrow", lambda m: m.draw_shape("arrow2")),
     ("Draw", "Rectangle", lambda m: m.draw_shape("rect")), ("Draw", "Circle / ellipse", lambda m: m.draw_shape("circle")),
-    ("Draw", "Polygon", lambda m: m.draw_shape("polygon")), ("Draw", "Region (freehand)", lambda m: m.draw_shape("region")),
+    ("Draw", "Polygon", lambda m: m.draw_shape("polygon")), ("Draw", "Region (curved)", lambda m: m.draw_shape("region")),
     ("Add", "Text", "add_text"), ("Add", "Arrow", "add_arrow"), ("Add", "Reference line", "add_refline"), ("Add", "Confidence ellipse", "add_ellipse"),
     ("Add", "Data from a sheet", "add_series"), ("Add", "Zoom inset", "zoom_inset"), ("Add", "Inset graph", "add_inset"),
-    ("Arrange", "Split into panels", "split_panels"), ("Arrange", "Layout page", "new_layout"), ("Arrange", "Duplicate graph", "dup_graph"),
+    ("Arrange", "Layers (extra axes)", "layers"), ("Arrange", "Split into panels", "split_panels"), ("Arrange", "Layout page", "new_layout"), ("Arrange", "Duplicate graph", "dup_graph"),
     ("Arrange", "Repeat for every sheet", "clone_graph_sheets"),
     ("Analyse", "Linear fit", lambda m: m.fit_poly(1)), ("Analyse", "Polynomial fit", lambda m: m.fit_poly(None)), ("Analyse", "Nonlinear fit", "fit_nl"),
     ("Analyse", "Peak analyzer", "peak_analyzer"), ("Analyse", "Smooth", "smooth"), ("Analyse", "Statistics", "desc"), ("Analyse", "Clear fits", "clear_fits"),
@@ -448,7 +454,7 @@ def _shortcut_panel(g):
     from PySide6.QtCore import Qt
     w = QWidget(); outer = QVBoxLayout(w); outer.setContentsMargins(6, 4, 6, 4); outer.setSpacing(2)
     outer.setSizeConstraint(QVBoxLayout.SetMinimumSize)  # the panel scrolls instead of squeezing its rows
-    settings = getattr(g.main, "settings", None); folded = set((settings or {}).get("panel_collapsed", []))
+    settings = getattr(g.main, "settings", None); folded = set((settings or {}).get("panel_collapsed", PANEL_FOLDED))
     from PySide6.QtCore import QSize
     from PySide6.QtGui import QIcon
     from .ui_style import arrows
@@ -466,6 +472,7 @@ def _shortcut_panel(g):
                 f = set(settings.get("panel_collapsed", [])); (f.discard(t) if on else f.add(t)); settings["panel_collapsed"] = sorted(f)
         h.toggled.connect(flip); h.setProperty("fold_header", True); outer.addWidget(h); outer.addWidget(body); return body
     g._curve_box = QVBoxLayout(section("Curves")); g._curve_box.setContentsMargins(4, 0, 0, 0); g._curve_box.setSpacing(4)
+    g._obj_box = QVBoxLayout(section("Objects")); g._obj_box.setContentsMargins(4, 0, 0, 0); g._obj_box.setSpacing(2)
     grid = None; last = None; row = col = 0
     for group, label, fn in GRAPH_SHORTCUTS:
         if group != last:
@@ -506,8 +513,14 @@ class GraphWindow(QWidget):
         self.fmt = FormatBar(self); self.series_lines, self.series_names = [], []
         from .textfmt import make_bar
         self.tfmt = make_bar(self); self._tsel = None
-        self.host = _AspectHost(self); lay.addWidget(tb); lay.addWidget(self.fmt); lay.addWidget(self.tfmt); lay.addWidget(self.host, 1)
-        self.fits = []; self.history = []; self.redo_stack = []; self.span = None; self.rows = np.array([], int)
+        from PySide6.QtWidgets import QStackedWidget
+        from .formatbar import ObjectBar
+        self.obar = ObjectBar(self); self._osel = None  # the axis or legend that was clicked
+        self.bars = QStackedWidget(); self.bars.addWidget(self.fmt); self.bars.addWidget(self.tfmt); self.bars.addWidget(self.obar)
+        self.bars.setFixedHeight(max(self.fmt.sizeHint().height(), self.tfmt.sizeHint().height(), self.obar.sizeHint().height(), 40))
+        self.host = _AspectHost(self); lay.addWidget(tb); lay.addWidget(self.bars); lay.addWidget(self.host, 1)
+        from .sheets import UndoList
+        self.fits = []; self.history = UndoList(self); self.redo_stack = []; self.span = None; self.rows = np.array([], int)
         self.setAcceptDrops(True)
 
     def _trim_nav(self, tb):
@@ -573,6 +586,59 @@ class GraphWindow(QWidget):
         if not self.series_names:
             from PySide6.QtWidgets import QLabel
             lab = QLabel("(no curves)"); lab.setStyleSheet("color: gray"); box.addWidget(lab)
+
+    @staticmethod
+    def object_label(a):
+        from . import shapes
+        k = a.get("kind")
+        if k in shapes.KINDS: return shapes.KINDS[k].split(" (")[0]
+        if k == "text": return f"Text: {str(a.get('text', ''))[:22]}"
+        if k == "hline": return f"Line at Y = {a.get('y')}"
+        if k == "vline": return f"Line at X = {a.get('x')}"
+        if k == "arrow": return "Arrow" + (f": {str(a['text'])[:18]}" if a.get("text") else "")
+        if k == "ellipse": return "Confidence ellipse"
+        if k == "series": return f"Data: {a.get('y')}"
+        return str(k)
+
+    def _refresh_objects(self):
+        """The Objects section of the side panel: everything drawn or added on the graph. Untick to hide, Edit, or delete."""
+        box = getattr(self, "_obj_box", None)
+        if box is None: return
+        from PySide6.QtWidgets import QCheckBox, QToolButton, QLabel
+        from PySide6.QtCore import QTimer
+        from . import shapes
+
+        def clear(lay):
+            while lay.count():
+                it = lay.takeAt(0); w = it.widget()
+                if w is not None: w.hide(); w.deleteLater()
+                elif it.layout() is not None: clear(it.layout())
+        clear(box); anns = self.spec.get("annotations") or []
+        for i, a in enumerate(anns):
+            row = QHBoxLayout(); row.setSpacing(2); name = f"{i + 1}. {self.object_label(a)}"
+            cb = QCheckBox(name if len(name) <= 30 else name[:28] + "..."); cb.setChecked(not a.get("hide")); cb.setToolTip(f"{name}: untick to hide it (it stays in the project)")
+            cb.toggled.connect(lambda on, i=i: QTimer.singleShot(0, lambda: self.object_do(i, "show" if on else "hide"))); row.addWidget(cb, 1)
+            for text, what, tip in ((("Edit", "edit", "Move, resize or reshape it on the graph"),) if a.get("kind") in shapes.KINDS else ()) + (("x", "delete", "Delete it (Undo brings it back)"),):
+                b = QToolButton(); b.setText(text); b.setAutoRaise(True); b.setToolTip(tip)
+                b.clicked.connect(lambda *_, i=i, w=what: QTimer.singleShot(0, lambda: self.object_do(i, w))); row.addWidget(b)
+            box.addLayout(row)
+        if not anns:
+            lab = QLabel("(nothing drawn or added yet)"); lab.setStyleSheet("color: gray"); box.addWidget(lab)
+
+    def object_do(self, i, what):
+        """Objects list: 'hide', 'show', 'edit' (handles) or 'delete' the i-th drawn or added object."""
+        anns = self.spec.get("annotations") or []
+        if not 0 <= i < len(anns): return
+        if what == "edit":
+            if anns[i].get("hide"): anns[i].pop("hide"); self.draw()
+            return self.edit_handles(i)
+        if getattr(self, "_drawing", None): self._drawing.stop()
+        self.snapshot()
+        if what == "delete": anns.pop(i)
+        elif what == "hide": anns[i]["hide"] = True
+        else: anns[i].pop("hide", None)
+        self.draw()
+        if hasattr(self.main, "mark_dirty"): self.main.mark_dirty()
 
     def set_curve_visible(self, i, on):
         self.snapshot(); st = self.spec.setdefault("style", {}); ser = dict(st.get("series") or {}); o = dict(ser.get(str(i)) or {})
@@ -778,6 +844,8 @@ class GraphWindow(QWidget):
                     rows = sh.masked_rows(c)
                     if rows: fig.axes[0].plot(xr[rows], sh.arr(c, raw=True)[rows], "x", color="red", ms=7, mew=1.5, label="_masked")
             self.draw_annotations(fig, sh, x, ys)
+            from .layers import draw_layers
+            draw_layers(self, fig)
             apply_post(fig, st)
             self._error_bars(fig, sh, x)  # after the style: bars take the curve's final colour from the format bar
 
@@ -787,6 +855,7 @@ class GraphWindow(QWidget):
         ax = fig.axes[0]; rect = ax.name == "rectilinear"
         for ai, a in enumerate(self.spec["annotations"]):
             k = a.get("kind")
+            if a.get("hide"): continue  # unticked in the Objects list
             try:
                 if k == "hline": ax.axhline(float(a["y"]), color=a.get("color", "0.3"), ls=a.get("ls", "--"), lw=1, label=a.get("label") or "_ref")
                 elif k == "vline": ax.axvline(float(a["x"]), color=a.get("color", "0.3"), ls=a.get("ls", "--"), lw=1, label=a.get("label") or "_ref")
@@ -817,7 +886,7 @@ class GraphWindow(QWidget):
         for L in (self.main.windows() if hasattr(self.main, "windows") else []):
             if L.kind == "layout" and self.name in L.spec.get("graphs", []): L.draw()
         arts, names = [], []
-        multi = sum(1 for a in self.fig.axes if _data_artists(a)) > 1
+        multi = sum(1 for a in self.fig.axes if _data_artists(a) and not getattr(a, "_pb_layer", False)) > 1  # layers are not panels
         for k, a in enumerate(self.fig.axes):  # in multi-panel graphs each curve says which panel it is in
             for art in _data_artists(a):
                 arts.append(art); names.append(f"[{a.get_ylabel() or f'panel {k + 1}'}] {art.get_label()}" if multi else str(art.get_label()))
@@ -825,6 +894,10 @@ class GraphWindow(QWidget):
         self._refresh_curves()
         if hasattr(self, "fmt"): self.fmt.refresh()
         if hasattr(self, "tfmt"): self.select_text(self._tsel, redraw=False)
+        if hasattr(self, "obar") and self._osel: self.obar.load(self._osel)
+        self._refresh_objects()
+        if hasattr(getattr(self, "_drawing", None), "refresh"):  # handles of a shape being edited: placed once the layout is settled
+            self.canvas.draw(); self._drawing.refresh()
         self._make_draggable()
         self.span = None
         if self.act_region.isChecked() and self.fig.axes and self.fig.axes[0].name == "rectilinear" and self.spec.get("source") != "matrix":
@@ -947,6 +1020,27 @@ class GraphWindow(QWidget):
                 if hit and i < len(anns) and anns[i].get("kind") in shapes.KINDS: return i, anns[i]
         return None
 
+    def edit_handles(self, i):
+        """Reshape a drawn object on the graph with handles (see shapes.ShapeEditor)."""
+        from .shapes import ShapeEditor
+        if getattr(self, "_drawing", None): self._drawing.stop()
+        self.select_text(None, redraw=False); ShapeEditor(self, i)
+
+    def _shape_menu(self, i):
+        """Right-click on a drawn object."""
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QCursor
+        from . import shapes
+        a = self.spec["annotations"][i]; m = QMenu(self); m.addSection(shapes.KINDS.get(a["kind"], "Object"))
+        m.addAction("Edit handles / nodes  (double-click)", lambda: self.edit_handles(i))
+        m.addAction("Shape properties...", lambda: self.edit_shape(i)); m.addSeparator()
+
+        def layer(z): self.snapshot(); self.spec["annotations"][i]["z"] = z; self.draw(); self.main.mark_dirty()
+        m.addAction("Bring in front of the data", lambda: layer(4)); m.addAction("Send behind the data", lambda: layer(0.6)); m.addSeparator()
+
+        def delete(): self.snapshot(); self.spec["annotations"].pop(i); self.draw(); self.main.mark_dirty()
+        m.addAction("Delete", delete); m.exec(QCursor.pos())
+
     def edit_shape(self, i):
         from . import shapes
         a = self.spec["annotations"][i]
@@ -962,7 +1056,7 @@ class GraphWindow(QWidget):
         (show hidden texts)."""
         if ev.button != 3 or self.act_region.isChecked() or self.act_reader.isChecked() or getattr(self, "_drawing", None): return
         sh = self._shape_at(ev)
-        if sh is not None: return self.edit_shape(sh[0])
+        if sh is not None: return self._shape_menu(sh[0])
         th = self._text_at(ev, any_text=True)
         if th is not None: self.select_text(th[0]); return self._text_menu(*th)
         hit = self._nearest_point(ev)
@@ -1016,7 +1110,7 @@ class GraphWindow(QWidget):
         if not ev.dblclick or not self.fig.axes or getattr(self, "_drawing", None): return
         from PySide6.QtWidgets import QInputDialog
         sh = self._shape_at(ev)
-        if sh is not None: return self.edit_shape(sh[0])
+        if sh is not None: return self.edit_handles(sh[0])  # double-click: move, resize, reshape or turn it on the graph
         for a in self._plot_axes():  # a sample group in the legend of a geochemistry diagram
             leg = a.get_legend()
             if leg is None or "groups" not in (self.spec.get("extra") or {}) and not any(str(l.get_gid() or "").startswith("pbgroup:") for l in a.lines): continue
@@ -1093,7 +1187,37 @@ class GraphWindow(QWidget):
                     self.fig.add_artist(r); r._pb_mark = True; self._tsel_marks.append(r)
             except Exception: pass
         if hasattr(self, "tfmt"): self.tfmt.load(self._tsel)
+        if self._tsel: self._osel = None
+        self._show_bar()
         if redraw: self.canvas.draw_idle()
+
+    def _show_bar(self):
+        """One format row: the text bar for a selected text, the axis / legend bar for a clicked axis or legend, else the curve bar."""
+        if hasattr(self, "bars"): self.bars.setCurrentIndex(1 if self._tsel else 2 if getattr(self, "_osel", None) else 0)
+
+    def select_object(self, kind):
+        """kind: 'x', 'y', 'legend' (their controls take the format row) or None (back to the curve bar)."""
+        if kind and self._tsel: self.select_text(None, redraw=False)
+        self._osel = kind; self.obar.load(kind); self._show_bar()
+        if kind: self.main.statusBar().showMessage(("Legend" if kind == "legend" else f"{kind.upper()} axis") + ": format it in the row above the graph.", 5000)
+
+    def _object_at(self, ev, text_key=None):
+        """'x' / 'y' for a click on an axis (its numbers or the strip beside the plot), 'legend' for the legend, else None."""
+        axes = self._plot_axes()
+        if not axes: return None
+        if text_key and text_key.startswith("0|@") and text_key.endswith(("@xticks", "@yticks")): return text_key[-6]
+        if text_key: return None
+        for a in axes:
+            leg = a.get_legend()
+            try:
+                if leg is not None and leg.contains(ev)[0]: return "legend"
+            except Exception: pass
+        a = axes[0]
+        if a.name != "rectilinear" or ev.x is None: return None
+        bb = a.bbox; pad = 0.09 * max(self.fig.bbox.width, self.fig.bbox.height)
+        if bb.x0 <= ev.x <= bb.x1 and bb.y0 - pad <= ev.y < bb.y0: return "x"
+        if bb.y0 <= ev.y <= bb.y1 and bb.x0 - pad <= ev.x < bb.x0: return "y"
+        return None
 
     def _text_drag_move(self, ev):
         if self._tdrag is None or ev.x is None: return
@@ -1106,8 +1230,10 @@ class GraphWindow(QWidget):
         self._tdrag = None
         if getattr(self, "_drawing", None): self._pre = None; return
         if ev is not None and ev.button == 1 and not self.nav.mode and not self.act_region.isChecked() and not self.act_reader.isChecked() and not ev.dblclick:
-            anyhit = self._text_at(ev, any_text=True)
+            anyhit = self._text_at(ev, any_text=True); obj = self._object_at(ev, anyhit[0] if anyhit else None)
+            if obj: anyhit = None  # the numbers of an axis select the axis (double-click them for their font)
             if (anyhit[0] if anyhit else None) != self._tsel: self.select_text(anyhit[0] if anyhit else None)
+            if obj != self._osel: self.select_object(obj)
             hit = self._text_at(ev)
             if hit is not None:  # drag a field name or other plot text; the drop is saved with the graph
                 key, t = hit; p = t.get_transform().transform(t.get_position())
@@ -1211,9 +1337,14 @@ class StyleDialog(QDialog):
         st = {**DEFAULT_STYLE, **style}; self.w = {}
         tabs = QTabWidget()
 
-        def page(rows):
+        def page(rows, fold=None):
+            """fold: the rows from this index on sit under a 'More options' switch (open when one of them is not at its default)."""
             p = QWidget(); f = QFormLayout(p)
             for key, label, widget in rows: f.addRow(label, widget); self.w[key] = widget
+            if fold is not None:
+                more = QCheckBox("More options (ticks, grid, axis breaks)"); f.insertRow(fold, more); extra = range(fold + 1, f.rowCount())
+                show = lambda on: [f.setRowVisible(r, bool(on)) for r in extra]
+                more.toggled.connect(show); more.setChecked(any(st[k] != DEFAULT_STYLE[k] for k, _, _ in rows[fold:])); show(more.isChecked())
             tabs.addTab(p, ""); return p
 
         def le(k):
@@ -1232,7 +1363,7 @@ class StyleDialog(QDialog):
               ("xmax", "X to", le("xmax")), ("yscale", "Y scale", cb("yscale", ["linear", "log", "symlog", "logit"])),
               ("ymin", "Y from (blank = auto)", le("ymin")), ("ymax", "Y to", le("ymax")), ("ticks_in", "Ticks point inward", ck("ticks_in")),
               ("mirror_ticks", "Ticks on all four sides", ck("mirror_ticks")), ("minor_ticks", "Minor ticks", ck("minor_ticks")),
-              ("grid", "Grid lines", ck("grid")), ("xbreak", "X axis break (from, to)", le("xbreak")), ("ybreak", "Y axis break (from, to)", le("ybreak"))])
+              ("grid", "Grid lines", ck("grid")), ("xbreak", "X axis break (from, to)", le("xbreak")), ("ybreak", "Y axis break (from, to)", le("ybreak"))], fold=6)
         page([("palette", "Colour palette", cb("palette", list(PALETTES))), ("cmap", "Colour map (contour, heat map, 3D)", cb("cmap", CMAPS)),
               ("line_width", "Line width", ds("line_width", 0.1, 10, 0.25)), ("linestyle", "Line style", cb("linestyle", list(LINESTYLES))),
               ("marker", "Symbol", cb("marker", list(MARKERS))), ("marker_size", "Symbol size", ds("marker_size", 0.5, 30)),

@@ -44,7 +44,9 @@ class MatrixSheet(QWidget):
         super().__init__(); self.book = book; self.name = name
         self.M = np.asarray(M if M is not None else np.full((32, 32), np.nan), float).copy()
         self.extent = list(map(float, extent or [1, self.M.shape[1], 1, self.M.shape[0]]))
-        self.formula = ""; self.zlabel = name; self.undo_stack = []; self.redo_stack = []
+        self.formula = ""; self.zlabel = name; self.redo_stack = []
+        from .sheets import UndoList
+        self.undo_stack = UndoList(self)
         self.view = QTableView(); self.model = MatrixModel(self); self.view.setModel(self.model)
         lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.addWidget(self.view)
 

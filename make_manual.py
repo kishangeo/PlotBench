@@ -310,7 +310,9 @@ or any other software installed.</p>
 PlotBench to the Start menu. Double-clicking a <code>.pbp</code> project file opens it in PlotBench. To give PlotBench to a
 colleague, send the Setup file only; it contains everything. A newer Setup installs over an older version.</p>
 <h3 id='first'>Your first graph in five steps</h3>
-<ol><li>Start PlotBench. The <b>Start page</b> opens: choose a template, a recent project, or close it for an empty workbook.</li>
+<ol><li>Start PlotBench. The <b>Start page</b> opens with three choices: <b>Open an example</b> (a finished graph with its data),
+<b>Import my data</b> (a wizard for CSV, text and Excel files) and <b>Start empty</b> (a blank worksheet). The other tabs hold
+templates and recent projects. Until you make your first graph, the status bar says how to make one.</li>
 <li>Type or paste your data, or use <b>File > Import</b> (or drag a file onto the window). For a quick try, use
 <b>Help > Example Data</b>: each example opens with its data and a finished graph.</li>
 <li>Tell PlotBench which column is X: right-click the column header and choose <b>Set as X</b>. Other columns are Y.</li>
@@ -493,6 +495,63 @@ scatter graph (with log axes if you ticked them), which is brought to the front.
 the selection and drag it onto a graph window. Columns from the graph's own sheet with the same X become more series of that plot; columns
 from another sheet (or with another X) are overlaid as extra curves. Dropping on empty workspace makes a new Line + Symbol graph.
 Each drop is one undo step (Ctrl+Z in the graph).</p>
+<h3>Plotting from the sheet</h3><p>The <b>Plot</b> row above every worksheet draws the selected columns in one click: Scatter, Line,
+Line + Symbol, Column, Histogram or Box. With nothing selected it plots all Y columns. <b>More...</b> opens the Plot Gallery; there,
+plot types that need more columns than you selected are grey, and the note under the pictures says how many they need.</p>
+<h3>Statistics of a selection</h3><p>Select cells or columns: the right end of the status bar shows the count, mean, standard
+deviation, sum, minimum and maximum of the numbers in the selection.</p>
+<h3>Filtering rows</h3><p>Right-click a column header and choose <b>Filter rows...</b>, then type a condition, for example
+<code>SiO2 &gt; 45</code> or <code>Rock == "basalt"</code> or <code>MgO &gt; 5 and MgO &lt; 12</code>. Rows that fail are masked (shown
+in red), not deleted: they leave every graph and analysis of the sheet. The Plot row shows the filter and how many rows it keeps;
+<b>Clear</b> there, or <b>Clear filter</b> in the header menu, brings all rows back. A second filter is added to the first. The filter
+is saved with the project and follows the data when values change.</p>
+<h3>Format an axis or the legend by clicking it</h3><p>Click an axis (its numbers, or just outside the plot beside it): the format
+row above the graph shows <b>From</b>, <b>To</b>, <b>Auto range</b>, <b>Scale</b> (linear or log), <b>Grid</b>, <b>Minor ticks</b>,
+<b>Ticks inside</b>, <b>Ticks all round</b> and <b>Number font...</b>. Click the legend for <b>Show</b>, <b>Position</b>,
+<b>Frame</b> and <b>Forget dragged position</b>. <b>More options...</b> opens Graph Properties; <b>Done</b>, or a click inside the
+plot, returns to the curve format row. Every change is one undo step. Double-click the numbers of an axis to format their font.</p>
+<h3>The Objects list</h3><p>The <b>Objects</b> section of the graph side panel lists everything drawn or added on the graph (shapes,
+texts, reference lines, arrows, added data). Untick an object to hide it, press <b>Edit</b> to reshape a shape with its handles, or
+<b>x</b> to delete it.</p>
+<h3>Copy and paste a graph's format</h3><p><b>Graph > Copy / Paste Format > Copy Format</b> remembers the look of the active graph.
+In another graph choose <b>Paste Format (everything)</b>, <b>Paste Colours Only</b> or <b>Paste Fonts Only</b>. Titles, axis ranges
+and the settings of single curves are not changed.</p>
+<h3>Results that follow the data</h3><p>A column made by <b>Thermobarometry</b> is recalculated, with its calibration-range column,
+whenever its input values change; such columns carry the mark &#8635; in their header. A Monte Carlo uncertainty column is not
+redrawn automatically: run the method again for a new one. Long Monte Carlo runs show a progress window with <b>Cancel</b>.</p>
+<h3>Recovery after a crash</h3><p>Every three minutes PlotBench writes unsaved work to a recovery copy in its settings folder (never
+over your project file). It is deleted when you save or exit normally. If PlotBench did not close normally, the next start offers to
+open the recovered work as an unsaved project. When several PlotBench windows run at once, only the first keeps a recovery copy.</p>
+<h3>Quick tour</h3><p><b>Help > Quick Tour (one minute)</b>, also on the Start page, shows five short notes, each beside the part of
+the window it describes.</p>
+<h3>Layers: more data with its own axes</h3><p><b>Graph > Layers (more data with its own axes)...</b> (also under Arrange in the
+graph side panel) opens the layer manager. <b>Add layer...</b> asks where the data is (any worksheet), the X column and the Y columns,
+how to draw them (line, scatter, line + symbol, step, column) and which axes to use: <b>its own Y axis on the right</b>, <b>its own
+X axis on the top</b>, both, or the graph's axes. An axis of its own has its own title, range and linear or log scale, and is drawn
+in the colour of its first curve; a second right axis stands further out. Layer curves appear in the graph's legend and in the
+format row's curve list, so they are formatted like any other curve. In the manager, untick a layer to hide it, or edit, reorder
+and remove layers; OK keeps everything as one undo step and Cancel puts the graph back. The graph redraws when a layer's sheet
+changes. Layers are for X-Y graphs.</p>
+<h3>One undo history</h3><p><b>Edit > Undo</b> (Ctrl+Z from the menu or toolbar) goes back through the changes in the order they
+were made, in whichever sheet, matrix or graph each was made, and brings that window to the front; the status bar names it.
+<b>Redo</b> goes forward the same way.</p>
+<h3>Send graphs to Word or PowerPoint</h3><p><b>File > Send to Word / PowerPoint</b> writes the active graph, or every graph and
+layout, into a new Word document (one per page, with the window name as caption) or a PowerPoint presentation (one per slide, with
+the name as title) at 300 dpi, and opens it. Word or PowerPoint need not be installed to write the file.</p>
+<h3>Export presets</h3><p>In the export dialog, <b>Save as preset...</b> stores the resolution, size, unit, transparency and
+editable-text switches under a name; choose the name in <b>Preset</b> later to fill them all in. <b>Delete</b> removes the chosen
+preset.</p>
+<h3>Copy analyses to other sheets</h3><p><b>Worksheet > Copy Analyses to Other Sheets...</b> repeats the active sheet's column
+formulas and thermobarometry columns in the sheets you tick. A calculation is skipped in a sheet that lacks its input columns.</p>
+<h3>Large files</h3><p>Reading a text file larger than 5 MB (Import Wizard or Quick Import) shows a progress window with
+<b>Cancel</b>; a cancelled import adds nothing.</p>
+<h3>Commands and the window in front</h3><p>A graph command chosen while a worksheet is in front goes to the graph you used last,
+which comes to the front; a worksheet command chosen while a graph is in front goes to the worksheet used last. When there is no
+such window at all, the message offers the next step (New workbook, Open an example, Open the Plot Gallery).</p>
+<h3>Simple menus</h3><p>A new installation starts with <b>View > Simple Menus</b> ticked: about 120 rarely used commands (the
+Matrix menu, advanced statistics, signal processing, special imports and exports) are left out of the menus, so the common ones are
+easy to find. Nothing is removed: <b>Search Commands</b> (Ctrl+K) still finds and runs every command, and each shortened menu ends in
+<b>Show all commands</b>, which switches the full menus back on. Keyboard shortcuts work in both modes.</p>
 <h3>Finding a command</h3><p><b>Help > Search Commands</b> (Ctrl+Shift+F) finds any menu command from what you type, including words
 that are not in the menu text: for example <i>deconvolution</i> finds the Peak Analyzer. Enter runs the highlighted command. In the
 manual window, type in the search box: every match is highlighted, Enter goes to the next and Shift+Enter to the previous.</p>
@@ -775,6 +834,21 @@ diagrams are not included either, because the boundaries in the scanned figure c
 (Ctrl+= and Ctrl+-) or the Zoom tool (drag a rectangle). <b>Reset view</b> (Ctrl+0, the corner-arrows button) shows the whole graph again;
 Back and Forward step through earlier views. Log axes zoom in log space. The panel to the right of a wide graph has a <b>Curves</b> section
 (untick a curve to hide it) and folding groups of shortcuts; click a heading to fold it. <b>View &gt; Graph Side Panel</b> hides the panel.</p>
+<h3>Drawing shapes and editing them on the graph</h3>
+<p><b>Drawing.</b> Line, arrow, rectangle and circle: choose the tool and drag on the graph. Polygon and region: click to place
+each node. A straight line follows the mouse from the last node, so you can place the nodes in any shape; the smooth curve of a region appears when you finish; click the first node again (it lights up when you are close), double-click,
+or press Enter to close the shape. Backspace or a right-click takes the last node back, and Esc cancels. A polygon has straight
+sides; a region is a smooth closed curve through its nodes.</p>
+<p><b>Editing.</b> Double-click a shape, or right-click it and choose <b>Edit handles / nodes</b>. Small red handles appear:</p>
+<ul><li><b>Line, arrow</b>: drag an end to lengthen, shorten or turn it (hold Shift for steps of 15&deg;); drag the line itself to move it.</li>
+<li><b>Rectangle, ellipse</b>: eight handles resize it (Shift on a corner keeps the proportions); the round handle above it turns it
+(Shift: steps of 15&deg;); drag inside to move it.</li>
+<li><b>Polygon, region</b>: drag a node; double-click or Ctrl+click the outline to add a node there; select a node and press Delete to
+remove it (at least three stay); the round handle turns the whole shape about its centre; drag inside to move it. A right-click offers
+Add node, Delete node and Smooth curve.</li></ul>
+<p>Press Enter or Esc, or click on empty space, to finish. Everything done in one editing session is one undo step. Right-click a
+shape at any time for <b>Shape properties</b> (colours, fill, pattern, line, arrow head, smooth or straight, angle), the layer, and
+Delete. The handles are only on screen: they are never part of an exported figure.</p>
 <h3>Drawing and annotation tools on the left toolbar</h3>
 <p>The drawing tools (line, arrow, rectangle, circle or ellipse, polygon, freehand region) share one button at the bottom of the left
 toolbar, and the tools that add to a graph (text, arrow, reference line, confidence ellipse, zoom inset) share the button above it,

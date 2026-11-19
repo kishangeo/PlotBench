@@ -96,6 +96,14 @@ xx, yy = r.uniform(-3, 3, 400), r.uniform(-3, 3, 400)
 save("scattered_xyz.csv", pd.DataFrame({"X": xx, "Y": yy, "Z": np.exp(-(xx ** 2 + yy ** 2) / 4) * np.cos(xx) + r.normal(0, 0.02, 400)}),
      "Scattered X, Y, Z for contour, density and 3-D plots.")
 
+# 12b a path in 3-D, and a grid with heights and vectors
+tt = np.linspace(0, 4 * np.pi, 80)
+save("path_3d.csv", pd.DataFrame({"X": np.cos(tt), "Y": np.sin(tt), "Z": tt / (4 * np.pi) * 10}), "A spiral path for the 3D Line plot.")
+gx, gy = (v.ravel() for v in np.meshgrid(np.arange(1.0, 6), np.arange(1.0, 5)))
+save("grid_heights_vectors.csv", pd.DataFrame({"X": gx, "Y": gy, "Z": np.round(2 + np.sin(gx) + 0.5 * gy, 3), "U": np.round(-(gy - 2.5), 3),
+                                               "V": np.round(gx - 3, 3), "W": np.full(gx.size, 0.5)}),
+     "A 5 x 4 grid with a height Z and a vector (U, V, W) at each point, for 3D Bars and 3D Vectors.")
+
 # 13 categories with errors
 save("categories_with_errors.csv", pd.DataFrame({"Site": ["North", "East", "South", "West", "Centre"], "2023": [12, 8, 15, 6, 10.0],
                                                  "SD 2023": [1.1, 0.8, 1.6, 0.7, 0.9], "2024": [15, 9, 13, 8, 12.0], "SD 2024": [1.4, 0.9, 1.2, 0.8, 1.1]}),

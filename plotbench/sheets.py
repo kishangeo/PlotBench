@@ -19,6 +19,18 @@ DESIG = ["X", "Y", "Z", "yErr", "yErr+", "yErr-", "xErr", "Label", "Ignore"]
 META = ["Long Name", "Units", "Comments"]
 SPARK = len(META)          # view row that shows the sparkline
 HEAD = len(META) + 1       # rows above the first data row
+class UndoList(list):
+    """An undo stack that tells the main window about every new step, so Edit > Undo can go back through sheets and graphs in
+    the order the changes were made."""
+
+    def __init__(self, owner): super().__init__(); self.owner = owner
+
+    def append(self, item):
+        super().append(item); m = getattr(self.owner, "main", None)
+        if m is not None and hasattr(m, "log_undo"): m.log_undo(self.owner)
+
+
+PLOT_STRIP = ["Scatter", "Line", "Line + Symbol", "Column", "Histogram", "Box"]
 PREFS = {"digits": 6, "undo_levels": 30, "theme": "light"}  # overwritten from user settings by the main window
 
 
@@ -129,7 +141,8 @@ class FrameModel(QAbstractTableModel):
             return f"Calculated: {m['Formula']}" if m.get("Formula") else f"Column {col_letter(s)} in cell formulas (e.g. ={col_letter(s)}1)"
         if role != Qt.DisplayRole: return None
         if orient == Qt.Horizontal:
-            c = self.df.columns[s]; f = " =" if c in self.sh.formulas else ""; L = col_letter(s)
+            c = self.df.columns[s]; L = col_letter(s)
+            f = " =" if c in self.sh.formulas else " \u21bb" if any(o.get("col") == c for o in getattr(self.sh, "ops", ())) else ""  # recalculates by itself
             return f"{c} ({self.sh.desig.get(c, 'Y')}){f}" if str(c) == L else f"{L} | {c} ({self.sh.desig.get(c, 'Y')}){f}"
         return META[s] if s < len(META) else "Sparkline" if s == SPARK else str(s - HEAD + 1)
 
@@ -160,6 +173,16 @@ class SheetView(QTableView):
         super().__init__(); self.sheet = sheet
         self.setDragEnabled(True); self.setDragDropMode(QAbstractItemView.DragOnly)
         self._fill_src = None; self._fill_to = None; self.viewport().setMouseTracking(True)
+        from PySide6.QtCore import QTimer
+        self._flash = set(); self._flash_timer = QTimer(self); self._flash_timer.setSingleShot(True); self._flash_timer.setInterval(1600)
+        self._flash_timer.timeout.connect(self._unflash)
+
+    def flash(self, col):
+        """Scroll to a new result column and tint it for a moment, so the user sees where the result went."""
+        self._flash.add(int(col)); top = max(self.rowAt(0), 0)
+        self.scrollTo(self.model().index(top, int(col))); self.viewport().update(); self._flash_timer.start()
+
+    def _unflash(self): self._flash = set(); self.viewport().update()
 
     # ---- fill handle: the small square at the bottom-right corner of the selection, as in Excel
     def _block(self):
@@ -181,6 +204,10 @@ class SheetView(QTableView):
         super().paintEvent(e)
         from PySide6.QtGui import QPainter, QColor, QPen
         from PySide6.QtCore import Qt as _Qt
+        if self._flash:
+            p = QPainter(self.viewport())
+            for c in self._flash: p.fillRect(self.columnViewportPosition(c), 0, self.columnWidth(c), self.viewport().height(), QColor(20, 163, 154, 60))
+            p.end()
         hr = self._handle_rect()
         if hr is None: return
         p = QPainter(self.viewport()); green = QColor(16, 124, 65)
@@ -271,7 +298,8 @@ class Sheet(QWidget):
         super().__init__(); self.book = book; self.name = name
         self.df = df if df is not None else pd.DataFrame({"A": [np.nan] * 32, "B": [np.nan] * 32})
         self.desig = {c: "Y" for c in self.df.columns}; self.desig[self.df.columns[0]] = "X"
-        self.formulas = {}; self.meta = {}; self.mask = set(); self.heat = {}; self.undo_stack = []; self.redo_stack = []
+        self.formulas = {}; self.meta = {}; self.mask = set(); self.heat = {}; self.undo_stack = UndoList(self); self.redo_stack = []
+        self.filters = []; self.fmask = set()  # row filter: conditions, and the cells it masks (a subset of self.mask)
         self.cell_formulas = {}  # (column, row) -> '=SUM(A1:A5)' typed into single cells, as in Excel
         self.view = SheetView(self); self.model = FrameModel(self); self.view.setModel(self.model)
         from .ui2 import SparklineDelegate
@@ -290,8 +318,81 @@ class Sheet(QWidget):
         self.fx.returnPressed.connect(self._fx_enter); self.fxinfo.setStyleSheet("color: gray"); self._fx_completer()
         bar = QHBoxLayout(); bar.setContentsMargins(4, 2, 4, 2); bar.addWidget(self.addr); bar.addWidget(QLabel("<i>fx</i>")); bar.addWidget(self.fx, 3)
         bar.addWidget(self.fxinfo, 2)
-        lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(0); lay.addLayout(bar); lay.addWidget(self.view)
+        # plot strip: the common plots one click away from the data (the full list is in More... and the Plot menu)
+        from PySide6.QtWidgets import QToolButton
+        from PySide6.QtCore import QTimer
+        strip = QHBoxLayout(); strip.setContentsMargins(4, 0, 4, 2); strip.setSpacing(2); strip.addWidget(QLabel("<b>Plot</b> "))
+        for k in PLOT_STRIP + ["More..."]:
+            b = QToolButton(); b.setText(k); b.setAutoRaise(True); b.setCursor(Qt.PointingHandCursor)
+            b.setToolTip("Open the Plot Gallery with every plot type" if k == "More..." else f"{k} plot of the selected columns (or of all Y columns)")
+            b.clicked.connect((lambda *_: self.main.run_command("Plot Gallery...", self.main.show_gallery)) if k == "More..."
+                              else (lambda *_, k=k: self.main.run_command(k, lambda: self.main.plot(k))))
+            strip.addWidget(b)
+        from PySide6.QtWidgets import QSizePolicy
+        self.strip_sel = QLabel(""); self.strip_sel.setStyleSheet("color: gray"); strip.addSpacing(8); strip.addWidget(self.strip_sel, 1)
+        self.strip_sel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)  # gives way to the filter line
+        self.filter_info = QLabel(""); self.filter_info.setVisible(False); self.filter_info.linkActivated.connect(lambda *_: self.clear_filter())
+        strip.addWidget(self.filter_info)
+        lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(0); lay.addLayout(bar); lay.addLayout(strip); lay.addWidget(self.view)
         self.view.selectionModel().currentChanged.connect(lambda cur, _prev: self.show_formula(cur))
+        self._sel_timer = QTimer(self); self._sel_timer.setSingleShot(True); self._sel_timer.setInterval(120); self._sel_timer.timeout.connect(self._sel_changed)
+        self.view.selectionModel().selectionChanged.connect(lambda *_: self._sel_timer.start()); self._sel_changed()
+
+    def _sel_changed(self):
+        """Selection changed: say what the plot strip will plot, and show count / mean / sum of the selected numbers."""
+        cols = sorted({c for r in self.view.selectionModel().selection() for c in range(r.left(), r.right() + 1)})
+        x = self.x_col(); names = [str(self.df.columns[c]) for c in cols if c < self.df.shape[1] and self.df.columns[c] != x]
+        self.strip_sel.setText(("of " + ", ".join(names[:6]) + (" ..." if len(names) > 6 else "")) if names
+                               else "of all Y columns (click a column header to choose)")
+        if hasattr(self.main, "show_stats"): self.main.show_stats(self.selection_stats())
+
+    def selection_stats(self):
+        """Count, mean, SD, sum, min and max of the numbers in the selected data cells; None for fewer than two numbers."""
+        parts = []
+        for r in self.view.selectionModel().selection():
+            r0, r1 = max(r.top() - HEAD, 0), r.bottom() - HEAD
+            if r1 >= r0: parts.append(pd.to_numeric(pd.Series(self.df.iloc[r0:r1 + 1, r.left():r.right() + 1].to_numpy().ravel()), errors="coerce").to_numpy(float))
+        a = np.concatenate(parts) if parts else np.array([]); a = a[np.isfinite(a)]
+        if a.size < 2: return None
+        return {"Count": a.size, "Mean": a.mean(), "SD": a.std(ddof=1), "Sum": a.sum(), "Min": a.min(), "Max": a.max()}
+
+    # ---- row filter (rows that fail are masked in every column, so they leave the graphs and the analyses)
+    def set_filter(self, cond, add=False):
+        """Keep the rows where cond is true, e.g. 'SiO2 > 45 and Rock == "basalt"' (same rules as column formulas). add=True
+        combines it with the filters already set. The other rows are masked, not deleted. Returns the number of rows kept."""
+        self._filter_keep(([] if not add else list(self.filters)) + [cond])  # raises on a bad condition before anything changes
+        self.snap(); self.filters = ([] if not add else list(self.filters)) + [cond]; return self.apply_filters()
+
+    def _filter_keep(self, conds):
+        cols = {str(c): (self.arr(c, raw=True) if pd.api.types.is_numeric_dtype(self.df[c]) else self.df[c].astype(str).to_numpy()) for c in self.df.columns}
+        keep = np.ones(len(self.df), bool)
+        for cond in conds: keep &= A.eval_condition(cond, cols, len(self.df))
+        return keep
+
+    def apply_filters(self):
+        # ponytail: one (column, row) entry per hidden cell; fine to ~1e5 rows, switch to a row set if sheets get larger
+        try: keep = self._filter_keep(self.filters)
+        except Exception: keep = np.ones(len(self.df), bool); self.filters = []  # a column of the condition is gone
+        new = {(c, int(r)) for r in np.nonzero(~keep)[0] for c in self.df.columns} if self.filters else set()
+        own = self.mask - self.fmask  # cells masked by hand stay masked when the filter goes
+        self.mask = own | new; self.fmask = new - own; self._filter_label(int(keep.sum()))
+        self.model.refresh(); self.main.refresh_graphs(self); self.notify(); return int(keep.sum())
+
+    def clear_filter(self):
+        if not self.filters: return
+        self.snap(); self.filters = []; self.apply_filters()
+
+    def _filter_label(self, kept=None):
+        on = bool(self.filters); self.filter_info.setVisible(on)
+        if on:
+            kept = len(self.df) - len({r for _, r in self.fmask}) if kept is None else kept
+            self.filter_info.setText(f"<b>Filter:</b> {' and '.join(self.filters)[:70]} &nbsp;({kept} of {len(self.df)} rows) &nbsp;<a href='x'>Clear</a>")
+
+    def filter_dialog(self, c=None):
+        start = f"{c} > " if c is not None and str(c).isidentifier() else ""
+        cond, ok = QInputDialog.getText(self, "Filter rows", "Keep rows where (column names, numbers, text in quotes, and / or / not):\n"
+                                        "e.g.  SiO2 > 45      Rock == \"basalt\"      MgO > 5 and MgO < 12", text=start)
+        if ok and cond.strip(): return self.set_filter(cond.strip(), add=bool(self.filters))
 
     # ---- formula bar
     def show_formula(self, cur=None):
@@ -402,10 +503,12 @@ class Sheet(QWidget):
 
     # ---- undo / redo (snapshots; ponytail: whole-sheet copies, switch to diffs if sheets get huge)
     def _state(self): return (self.df.copy(), dict(self.desig), dict(self.formulas), {k: dict(v) for k, v in self.meta.items()},
-                              set(self.mask), dict(self.cell_formulas))
+                              set(self.mask), dict(self.cell_formulas), list(self.filters), set(self.fmask))
 
     def _restore(self, st):
         self._spark = {}; self.df, self.desig, self.formulas, self.meta, self.mask = st[:5]
+        self.filters, self.fmask = (list(st[6]), set(st[7])) if len(st) > 7 else ([], set())
+        self._filter_label()
         self.cell_formulas = dict(st[5]) if len(st) > 5 else {}; self.model.refresh(); self.show_formula(); self.main.refresh_graphs(self); self.notify()
         if hasattr(self.main, "mark_dirty"): self.main.mark_dirty()
 
@@ -674,7 +777,9 @@ class Sheet(QWidget):
         cmd = getattr(self.main, "current_command", None) if values is not None else None
         if formula or cmd:  # shown in the formula bar and the header tooltip
             self.meta.setdefault(name, {})["Formula"] = formula or f"made by {cmd}"
-        self.model.refresh(); return name
+        self.model.refresh()
+        if values is not None and self.isVisible(): self.view.flash(self.df.columns.get_loc(name))
+        return name
 
     def _formula_order(self):
         """Formula columns sorted so each runs after the formula columns it reads; raises CycleError on a loop."""
@@ -718,6 +823,8 @@ class Sheet(QWidget):
         m.addAction("Column properties...", lambda: self.properties(c))
         m.addAction("Mask selected cells", lambda: self.set_mask(self.selected_cells(), True))
         m.addAction("Unmask selected cells", lambda: self.set_mask(self.selected_cells(), False))
+        m.addAction("Filter rows...", lambda: self.main.safe(lambda: self.filter_dialog(c)))
+        if self.filters: m.addAction("Clear filter", self.clear_filter)
         m.addAction("Sort ascending", lambda: self.sort(c, True)); m.addAction("Sort descending", lambda: self.sort(c, False))
         m.addAction("Insert column before", lambda: self.insert_column(c))
         m.addAction("Delete column", lambda: self.delete(c))
@@ -809,7 +916,7 @@ class Sheet(QWidget):
         self.mask = {m for m in self.mask if m[0] != c}; self.recalc(); self.model.refresh()
 
     def state(self): return {"name": self.name, "desig": self.desig, "formulas": self.formulas, "meta": self.meta,
-                             "mask": sorted([str(c), int(r)] for c, r in self.mask), "ops": self.ops,
+                             "mask": sorted([str(c), int(r)] for c, r in self.mask), "ops": self.ops, "filters": list(self.filters), "fmask": sorted([str(c), int(r)] for c, r in self.fmask),
                              "cells": sorted([str(c), int(r), t] for (c, r), t in self.cell_formulas.items())}
 
 
@@ -923,10 +1030,37 @@ class Workbook(QWidget):
 SEPS = {"Auto-detect": None, "Comma": ",", "Tab": "\t", "Semicolon": ";", "Space(s) / whitespace": r"\s+", "Pipe |": "|"}
 
 
+class ProgressFile(__import__("io").FileIO):
+    """A file that reports how far it has been read: step(bytes read, size) is called as pandas reads through it, and may raise
+    to stop the import (see Main.import_progress)."""
+
+    def __init__(self, path, step):
+        import os
+        super().__init__(path, "rb"); self._step = step; self._size = max(os.path.getsize(path), 1)
+
+    def readinto(self, b):
+        n = super().readinto(b); self._step(self.tell(), self._size); return n
+
+    def read(self, size=-1):  # in pieces, so that a single read of the whole file still reports progress
+        if size is None or size < 0:
+            parts = []
+            while True:
+                d = super().read(1 << 20)
+                if not d: break
+                parts.append(d); self._step(self.tell(), self._size)
+            return b"".join(parts)
+        d = super().read(size); self._step(self.tell(), self._size); return d
+
+    def readall(self): return self.read(-1)
+
+
 def read_with_options(path, sep=None, skip=0, names_line=1, units_line=0, comments_line=0, comment_char="", decimal=".",
-                      max_rows=None):
+                      max_rows=None, progress=None):
     """Parse a delimited text file. Line numbers are 1-based and counted after `skip` lines; 0 = none.
-    Returns (DataFrame, meta dict)."""
+    progress: None, or step(bytes read, size) for a progress window. Returns (DataFrame, meta dict)."""
+    if progress is not None:
+        with ProgressFile(path, progress) as fh:
+            return read_with_options(fh, sep, skip, names_line, units_line, comments_line, comment_char, decimal, max_rows)
     raw = pd.read_csv(path, sep=sep, engine="python" if sep is None else "c", header=None, skiprows=skip,
                       comment=comment_char or None, decimal=decimal, dtype=str, nrows=max_rows, skip_blank_lines=True,
                       on_bad_lines="skip")  # the C parser is ~10x faster; only delimiter sniffing needs the Python one
@@ -999,5 +1133,5 @@ class ImportWizard(QDialog):
         for i in range(len(show)):
             for j in range(show.shape[1]): self.preview.setItem(i, j, QTableWidgetItem(fmt(show.iat[i, j])))
 
-    def result_data(self):
-        return read_with_options(self.path.text(), **self.options())
+    def result_data(self, progress=None):
+        return read_with_options(self.path.text(), **self.options(), progress=progress)

@@ -121,9 +121,7 @@ class StartPage(QDialog):
         self.quick = self._grid(QSize(64, 64)); self.tpl = self._grid(QSize(200, 150)); self.recent = QListWidget()
         icon = lambda n: QIcon(asset(n)) if (ASSETS / n).exists() else QIcon()
         from .toolbars import _icon, draw_tool
-        for text, key, ic in (("Blank Workbook", ("template", "Blank Workbook"), QIcon(asset("logo.png"))),
-                              ("Import Data (Wizard)", ("action", "import_wizard"), self.style().standardIcon(QStyle.SP_ArrowDown)),
-                              ("Open Project", ("action", "open_project"), self.style().standardIcon(QStyle.SP_DirOpenIcon)),
+        for text, key, ic in (("Open Project", ("action", "open_project"), self.style().standardIcon(QStyle.SP_DirOpenIcon)),
                               ("New Matrixbook", ("action", "new_matrix_dialog"), _icon(draw_tool("matrix"))),
                               ("Digitize a Graph Image", ("action", "digitize"), _icon(draw_tool("digitize"))),
                               ("Python Console", ("action", "show_console"), _icon(draw_tool("console")))):
@@ -133,21 +131,41 @@ class StartPage(QDialog):
         for r in main.settings.get("recent", []):
             it = QListWidgetItem(self.style().standardIcon(QStyle.SP_FileIcon), r); it.setData(Qt.UserRole, ("recent", r)); self.recent.addItem(it)
         if not main.settings.get("recent"): self.recent.addItem("(no recent projects)")
-        self.tabs.addTab(self.quick, "Start"); self.tabs.addTab(self.tpl, "Templates"); self.tabs.addTab(self.recent, "Recent Projects")
-        for w in (self.quick, self.tpl, self.recent): w.itemDoubleClicked.connect(lambda *_: self.accept())
+        # three large choices first: a new user should not have to guess where to begin
+        from .examples import EXAMPLES
+        self.examples = QListWidget(); self.examples.setWordWrap(True); self.examples.setSpacing(3)
+        for k, e in EXAMPLES.items():
+            it = QListWidgetItem(f"{e[0]}\n    {e[2]}"); it.setData(Qt.UserRole, ("example", k)); self.examples.addItem(it)
+        self.examples.setCurrentRow(0); self._pick = None; self.startw = QWidget(); sl = QVBoxLayout(self.startw); row = QHBoxLayout(); self.big = []
+        for title, sub, key in (("Open an example", "See a finished graph with its data.\nThe quickest way to learn.", None),
+                                ("Import my data", "CSV, text or Excel file.\nA wizard shows a preview.", ("action", "import_wizard")),
+                                ("Start empty", "A blank worksheet to type\nor paste numbers into.", ("template", "Blank Workbook"))):
+            b = QPushButton(f"{title}\n\n{sub}"); b.setMinimumHeight(130); b.setCursor(Qt.PointingHandCursor)
+            b.setStyleSheet("QPushButton { font-size: 15px; padding: 14px; text-align: center; }")
+            b.clicked.connect((lambda *_, k=key: self._choose(k)) if key else (lambda *_: self.tabs.setCurrentWidget(self.examples)))
+            row.addWidget(b); self.big.append(b)
+        more = QLabel("<span style='color:gray'>More</span> &nbsp; &nbsp; <a href='tour'>New here? Take the one-minute tour</a>"); self.quick.setMaximumHeight(150)
+        more.linkActivated.connect(lambda *_: self._choose(("action", "tour")))
+        sl.addLayout(row); sl.addSpacing(8); sl.addWidget(more); sl.addWidget(self.quick); sl.addStretch()
+        self.tabs.addTab(self.startw, "Start"); self.tabs.addTab(self.examples, "Examples"); self.tabs.addTab(self.tpl, "Templates"); self.tabs.addTab(self.recent, "Recent Projects")
+        for w in (self.quick, self.tpl, self.recent, self.examples): w.itemDoubleClicked.connect(lambda *_: self.accept())
+        self.quick.itemClicked.connect(lambda *_: self.accept())
         self.show_box = QCheckBox("Show on startup"); self.show_box.setChecked(main.settings.get("show_start", True))
         ok, close = QPushButton("OK"), QPushButton("Close"); ok.setDefault(True); ok.clicked.connect(self.accept); close.clicked.connect(self.reject)
         about = QLabel(f"<span style='color:gray'>PlotBench by Kishan Tiwari</span>")
         bottom = QHBoxLayout(); bottom.addWidget(about); bottom.addStretch(); bottom.addWidget(self.show_box); bottom.addSpacing(20); bottom.addWidget(ok); bottom.addWidget(close)
         lay = QVBoxLayout(self); lay.addWidget(head); lay.addWidget(self.tabs); lay.addLayout(bottom)
-        self.quick.setCurrentRow(0); self.tpl.setCurrentRow(0)
+        self.tpl.setCurrentRow(0); self.big[0].setFocus()
+
+    def _choose(self, key): self._pick = key; self.accept()
 
     def _grid(self, size):
         from .tiles import make_tile_grid
         return make_tile_grid(size)
 
     def selected(self):
-        w = self.tabs.currentWidget(); it = w.currentItem() if w is not None else None
+        if self._pick: return self._pick
+        w = self.tabs.currentWidget(); w = self.quick if w is self.startw else w; it = w.currentItem() if w is not None else None
         return it.data(Qt.UserRole) if it is not None else None
 
     def done(self, r):

@@ -69,7 +69,7 @@ jobs:
         shell: pwsh
         run: |
           pyinstaller --noconfirm --windowed --name PlotBench --icon plotbench\assets\icon.ico `
-            --add-data "plotbench\assets;plotbench\assets" --add-data "plotbench\examples;plotbench\examples" --add-data "plotbench\manual;plotbench\manual" `
+            --add-data "plotbench\assets;plotbench\assets" --add-data "plotbench\examples;plotbench\examples" --add-data "plotbench\manual;plotbench\manual" --add-data "CHANGELOG.md;." `
             --hidden-import matplotlib.backends.backend_pdf --hidden-import matplotlib.backends.backend_ps --hidden-import matplotlib.backends.backend_svg `
             --hidden-import PIL.TiffImagePlugin --hidden-import pywt --hidden-import h5py --hidden-import xlrd --hidden-import scipy.odr `
             --exclude-module tkinter run_plotbench.py
@@ -79,7 +79,7 @@ jobs:
         run: |
           pyinstaller --noconfirm --windowed --name PlotBench --icon plotbench/assets/logo.png \
             --osx-bundle-identifier io.github.kishangeo.plotbench \
-            --add-data "plotbench/assets:plotbench/assets" --add-data "plotbench/examples:plotbench/examples" --add-data "plotbench/manual:plotbench/manual" \
+            --add-data "plotbench/assets:plotbench/assets" --add-data "plotbench/examples:plotbench/examples" --add-data "plotbench/manual:plotbench/manual" --add-data "CHANGELOG.md:." \
             --hidden-import matplotlib.backends.backend_pdf --hidden-import matplotlib.backends.backend_ps --hidden-import matplotlib.backends.backend_svg \
             --hidden-import PIL.TiffImagePlugin --hidden-import pywt --hidden-import h5py --hidden-import xlrd --hidden-import scipy.odr \
             --exclude-module tkinter run_plotbench.py
@@ -93,7 +93,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           pyinstaller --noconfirm --windowed --name PlotBench \
-            --add-data "plotbench/assets:plotbench/assets" --add-data "plotbench/examples:plotbench/examples" --add-data "plotbench/manual:plotbench/manual" \
+            --add-data "plotbench/assets:plotbench/assets" --add-data "plotbench/examples:plotbench/examples" --add-data "plotbench/manual:plotbench/manual" --add-data "CHANGELOG.md:." \
             --hidden-import matplotlib.backends.backend_pdf --hidden-import matplotlib.backends.backend_ps --hidden-import matplotlib.backends.backend_svg \
             --hidden-import PIL.TiffImagePlugin --hidden-import pywt --hidden-import h5py --hidden-import xlrd --hidden-import scipy.odr \
             --exclude-module tkinter run_plotbench.py
