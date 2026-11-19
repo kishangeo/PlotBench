@@ -78,7 +78,7 @@ def main():
     rel = published((ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
     if not rel: raise SystemExit("No released version in CHANGELOG.md")
     page = build(SITE.read_text(encoding="utf-8"), rel)
-    SITE.write_text(page, encoding="utf-8", newline=""); print(f"docs/index.html: latest {rel[0][0]}, {len(rel) - 1} earlier versions")
+    open(SITE, "w", encoding="utf-8", newline="").write(page); print(f"docs/index.html: latest {rel[0][0]}, {len(rel) - 1} earlier versions")
 
 
 if __name__ == "__main__":
