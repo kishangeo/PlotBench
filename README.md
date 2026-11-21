@@ -15,8 +15,8 @@ publication-ready figures without writing code. It runs on Windows, macOS and Li
 
 ## What it does
 
-- **Worksheets and graphs.** Spreadsheet-style workbooks, 83 plot types, journal-sized export (PNG, TIFF, PDF, SVG, EPS) with a true-size preview, multi-panel figures with (a), (b), (c) labels.
-- **Fitting and spectroscopy.** Linear, polynomial and 47 nonlinear models; a Peak Analyzer with baselines, Gaussian, Lorentzian, pseudo-Voigt and Voigt peaks, and peak areas for Raman, FTIR and XRD spectra.
+- **Worksheets and graphs.** Spreadsheet-style workbooks, 91 plot types, journal-sized export (PNG, TIFF, PDF, SVG, EPS) with a true-size preview, multi-panel figures with (a), (b), (c) labels.
+- **Fitting and spectroscopy.** Linear, polynomial and 72 nonlinear models; a Peak Analyzer with baselines, Gaussian, Lorentzian, pseudo-Voigt and Voigt peaks, and peak areas for Raman, FTIR and XRD spectra.
 - **Statistics.** Descriptive statistics, t-tests, ANOVA, non-parametric tests, PCA, clustering, discriminant analysis, regression and mixed models.
 - **Geochemistry.** TAS, AFM, Harker, Frost, Shand, Pearce granite and basalt discrimination diagrams, chondrite- and mantle-normalised spider diagrams, ternary plots, CIPW norm.
 - **Mineral chemistry.** Mineral formulae from oxide wt%, with Fe<sup>3+</sup> by charge balance (Droop 1987), and amphibole, pyroxene and feldspar classification.
