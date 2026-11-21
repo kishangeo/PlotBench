@@ -21,9 +21,14 @@ MINERALS = {"Olivine": (4, None), "Pyroxene": (6, 4), "Garnet": (12, 8), "Spinel
             "Chlorite": (28, None), "Cordierite": (18, None), "Staurolite": (46, None), "Titanite": (5, "all3"), "Custom": (None, None)}
 
 
+def _bare(name):
+    """A header without a leading unit, as some microprobe exports write it ('Wt% SiO2', 'Mass% FeO', 'wt.% MgO')."""
+    return re.sub(r"^\s*(wt\.?\s*%|mass\s*%|oxide\s*%)\s*[_:\-]?\s*", "", str(name), flags=re.I).strip()
+
+
 def oxide_of(name):
     """'SiO2', 'SiO2 (wt%)', 'feo', 'FeOt', 'FeO*', 'FeOT' -> oxide key; FeO total is treated as FeO. None if not an oxide."""
-    s = str(name).strip()
+    s = _bare(name)
     if re.match(r"FeO(t|\*|tot|total)?(?![a-z0-9])", s, re.I): return "FeO"
     if re.match(r"Fe2O3(t|\*|tot|total)(?![a-z0-9])", s, re.I): return "FeO"  # total iron as Fe2O3: use as FeO (x to_feo)
     for k in sorted(OXIDES, key=len, reverse=True):
@@ -102,7 +107,7 @@ def collect_oxides(cols, arr, keep=None):
     for c in cols:
         k = oxide_of(c)
         if not k or (keep is not None and k not in keep): continue
-        if re.match(r"\s*Fe(O|2O3)(t|\*|tot|total)(?![a-z0-9])", str(c).strip(), re.I):
+        if re.match(r"\s*Fe(O|2O3)(t|\*|tot|total)(?![a-z0-9])", _bare(c), re.I):
             if total is None: total = c
             continue
         if k not in out: out[k] = arr(c)

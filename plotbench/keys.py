@@ -46,9 +46,33 @@ def _filled(v):
 class EditDelegate(QStyledItemDelegate):
     """Enter/Shift+Enter commit and move; Ctrl+Enter or Alt+Enter fill the whole selection with the typed value."""
 
-    def __init__(self, sheet): super().__init__(sheet.view); self.sh = sheet
+    def __init__(self, sheet):
+        super().__init__(sheet.view); self.sh = sheet
+        self.closeEditor.connect(lambda ed, *_: getattr(ed, "_assist", None) is not None and ed._assist.close())
+
+    def createEditor(self, parent, option, index):
+        ed = super().createEditor(parent, option, index)
+        from PySide6.QtWidgets import QLineEdit
+        if isinstance(ed, QLineEdit):  # formula help: function popup, calltip, F4, and picking cells with the mouse
+            from .formula_edit import FormulaAssist
+            FormulaAssist(self.sh, ed)
+        return ed
 
     def eventFilter(self, editor, ev):
+        a = getattr(editor, "_assist", None)
+        if a is not None and ev.type() == QEvent.ShortcutOverride and editor.text().startswith("=") and ev.key() in (Qt.Key_F4, Qt.Key_Tab, Qt.Key_Escape):
+            ev.accept(); return True  # F4 cycles $ here (not Repeat Last Command)
+        if a is not None and ev.type() == QEvent.KeyPress and a.key(ev): return True
+        if a is not None and ev.type() == QEvent.FocusOut and editor.text().startswith("="):
+            from PySide6.QtWidgets import QApplication
+            w = QApplication.focusWidget()  # a click on a cell or a sheet tab of this book while picking: keep the formula open
+            hidden = not editor.isVisible()  # its sheet tab was switched away to pick on another sheet
+            while w is not None and w is not self.sh.book: w = w.parentWidget()
+            if w is self.sh.book or hidden:
+                QTimer.singleShot(0, lambda: editor.isVisible() and editor.setFocus()); return True
+        if ev.type() == QEvent.KeyPress and ev.key() in (Qt.Key_Return, Qt.Key_Enter) and hasattr(editor, "text") and editor.text().startswith("="):
+            from .formula_edit import close_brackets
+            editor.setText(close_brackets(editor.text()))
         if ev.type() == QEvent.KeyPress and ev.key() in (Qt.Key_Return, Qt.Key_Enter):
             mods = ev.modifiers()
             if mods & (Qt.ControlModifier | Qt.AltModifier):

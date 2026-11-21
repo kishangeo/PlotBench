@@ -722,26 +722,51 @@ def solve_pt(tmethod, pmethod, columns, sheet_arr, sheet_oxides, p0=10.0, n_iter
         T = compute(tmethod, {**columns, "P (kbar)": P}, sheet_arr, sheet_oxides)
         Pn = compute(pmethod, tcols(T), sheet_arr, sheet_oxides); Pn = np.broadcast_to(Pn, np.broadcast(Pn, T).shape).astype(float)
         with np.errstate(invalid="ignore"): d = np.abs(Pn - P)
-        P = Pn
+        P = Pn if it == 1 else 0.5 * (P + Pn)  # under-relaxed, so steep pairs settle instead of oscillating
         if np.all(~np.isfinite(d) | (d < tol)): break
     T = compute(tmethod, {**columns, "P (kbar)": P}, sheet_arr, sheet_oxides)
     with np.errstate(invalid="ignore"): off = ~(np.abs(compute(pmethod, tcols(T), sheet_arr, sheet_oxides) - P) < 10 * tol)
-    T, P = np.array(T, float), np.array(np.broadcast_to(P, T.shape), float); T[off] = np.nan; P[off] = np.nan
+    T, P = np.array(T, float), np.array(np.broadcast_to(P, T.shape), float)
+    if off.any() and T.ndim:  # rescue: bracket g(p) = P(T(p)) - p on a grid, then bisect, all rows at once
+        g = lambda p: np.broadcast_to(compute(pmethod, tcols(compute(tmethod, {**columns, "P (kbar)": p}, sheet_arr, sheet_oxides)),
+                                              sheet_arr, sheet_oxides), T.shape) - p
+        grid = np.linspace(0.1, 80.0, 33)
+        with np.errstate(all="ignore"): gv = np.array([g(np.full(T.shape, q)) for q in grid])
+        lo, hi = np.full(T.shape, np.nan), np.full(T.shape, np.nan)
+        for k in range(len(grid) - 1):
+            hit = off & np.isnan(lo) & np.isfinite(gv[k]) & np.isfinite(gv[k + 1]) & (gv[k] * gv[k + 1] <= 0)
+            lo[hit], hi[hit] = grid[k], grid[k + 1]
+        rows = np.isfinite(lo)
+        if rows.any():
+            a, b = np.where(rows, lo, 1.0), np.where(rows, hi, 1.0)
+            with np.errstate(all="ignore"):
+                ga = g(a)
+                for _ in range(40):
+                    m = 0.5 * (a + b); gm = g(m); left = ga * gm <= 0
+                    b = np.where(left, m, b); a = np.where(left, a, m); ga = np.where(left, ga, gm)
+                pr = 0.5 * (a + b); tr = np.broadcast_to(compute(tmethod, {**columns, "P (kbar)": pr}, sheet_arr, sheet_oxides), T.shape)
+                ok_r = rows & np.isfinite(tr) & (np.abs(g(pr)) < 10 * tol)  # a pole (sign change through infinity) is not a root
+            P[ok_r], T[ok_r] = pr[ok_r], tr[ok_r]; off = off & ~ok_r
+    T[off] = np.nan; P[off] = np.nan
     return T, P, it
 
 
-def solve_pt_mc(tmethod, pmethod, columns, sheet_arr, sheet_oxides, p0=10.0, rel=0.02, n=200, seed=1, progress=None):
+def solve_pt_mc(tmethod, pmethod, columns, sheet_arr, sheet_oxides, p0=10.0, rel=0.02, n=200, seed=1, progress=None, num_sd=None):
     """1-sigma of the coupled P-T solution (per row) when every measured input carries a relative 1-sigma error rel: the pair is
     solved n times, each time with all columns and oxide analyses redrawn once (the same noisy values through all iterations of
-    one solution). Returns (sd of T, sd of P), or None when progress(i) returned False. Inputs are varied independently, so this is
-    the analytical part only; the calibration errors of the two equations come on top."""
-    rs = np.random.default_rng(seed); base = {}; Ts, Ps = [], []
+    one solution). Returns (sd of T, sd of P, T-P correlation), or None when progress(i) returned False. Inputs are varied independently, so this is
+    the analytical part only; the calibration errors of the two equations come on top. num_sd: {input: absolute 1-sigma}, e.g.
+    {"Liquid H2O (wt%)": 1}, for inputs (a column or a number) known to an absolute rather than a relative error."""
+    rs = np.random.default_rng(seed); base = {}; Ts, Ps = [], []; num_sd = {k: v for k, v in (num_sd or {}).items() if v}
+    absolute = {columns[k]: sd for k, sd in num_sd.items() if isinstance(columns.get(k), str)}
     for it in range(int(n)):
         if progress is not None and progress(it) is False: return None
         ca, co = {}, {}
 
         def arr(c, ca=ca):
-            if c not in ca: a = np.asarray(sheet_arr(c), float); ca[c] = a * (1 + rel * rs.standard_normal(a.shape))
+            if c not in ca:
+                a = np.asarray(sheet_arr(c), float)
+                ca[c] = a + absolute[c] * rs.standard_normal(a.shape) if c in absolute else a * (1 + rel * rs.standard_normal(a.shape))
             return ca[c]
 
         def ox(prefix=False, co=co):
@@ -749,10 +774,15 @@ def solve_pt_mc(tmethod, pmethod, columns, sheet_arr, sheet_oxides, p0=10.0, rel
             if k not in base: base[k] = sheet_oxides(prefix)
             if k not in co: co[k] = {e: np.asarray(v, float) * (1 + rel * rs.standard_normal(np.shape(v))) for e, v in base[k].items()}
             return co[k]
-        with np.errstate(all="ignore"): T, P, _ = solve_pt(tmethod, pmethod, columns, arr, ox, p0)
+        cols = {k: (v + num_sd[k] * rs.standard_normal() if k in num_sd and isinstance(v, (int, float)) and not isinstance(v, bool) else v)
+                for k, v in columns.items()}
+        with np.errstate(all="ignore"): T, P, _ = solve_pt(tmethod, pmethod, cols, arr, ox, p0)
         Ts.append(T); Ps.append(P)
     with np.errstate(all="ignore"), __import__("warnings").catch_warnings():
-        __import__("warnings").simplefilter("ignore"); return np.nanstd(np.array(Ts), axis=0, ddof=1), np.nanstd(np.array(Ps), axis=0, ddof=1)
+        __import__("warnings").simplefilter("ignore")
+        Ts, Ps = np.array(Ts, float), np.array(Ps, float); sT, sP = np.nanstd(Ts, axis=0, ddof=1), np.nanstd(Ps, axis=0, ddof=1)
+        rho = np.nanmean((Ts - np.nanmean(Ts, 0)) * (Ps - np.nanmean(Ps, 0)), axis=0) / (np.nanstd(Ts, axis=0) * np.nanstd(Ps, axis=0))
+        return sT, sP, np.clip(rho, -1, 1)
 
 
 # Brey, Kohler & Nickel (1990, J Petrol 31, 1313, Table 2): garnet-lherzolite runs (run, P kbar, T C, opx Ca Al Cr Na Mg#, garnet XCa Al

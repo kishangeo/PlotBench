@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.32.0 (2026-11-21)
+
+- Thermobarometry and the Coupled P-T Solver: the method lists are grouped by mineral or assemblage and have a search box; methods
+  whose inputs are not all in the sheet are grey, and a line under the list says which inputs were found or are missing.
+- Coupled P-T Solver draws a P-T diagram: the solutions and, for up to 12 samples, the thermometer curve T(P), the barometer curve
+  P(T) and (with Monte Carlo) the 1-sigma ellipse; the curves are in a new sheet "P-T curves".
+- Fe-Ti oxides: two diagrams, T against log fO2 with the MH and FMQ (Frost 1991) and NNO (O'Neill & Pownceby 1993) buffers, and
+  log(Mg/Mn) of magnetite against ilmenite with the Bacon & Hirschmann (1988) equilibrium band. Also in the Petrology menu.
+- Compare Thermometers: 2 to 4 thermometers on the same rows, with their differences from the first and a summary report.
+- Oxide headers with a leading unit from microprobe software (Wt% SiO2, Mass% FeO) are recognised.
+- Graph templates for journal columns (Nature, Elsevier, Springer, Wiley/AGU): exact width, Arial 7 pt, thin lines, 600 dpi.
+- View > Graph Inspector (Ctrl+Shift+I): a panel with the main settings of the graph in front, applied as they are changed.
+- View > Dark Graph Canvas on Screen: graphs on a dark background in the dark theme; exported files stay white.
+- The graph tools bar shows only while a graph or layout is in front (View menu to keep it always).
+- Window > Side by Side (Ctrl+Alt+S): the two windows used last next to each other, e.g. a sheet and its graph.
+- The interface uses the system font on macOS and Linux (SF Pro, Noto Sans, Ubuntu) instead of falling back to Arial.
+- Coupled P-T solver: every step after the first goes half way (damping from the start), and rows that still do not settle are
+  solved by bracketing P(T(p)) = p between 0.1 and 80 kbar and bisecting.
+- Coupled P-T Monte Carlo also returns the T-P correlation; the 1-sigma ellipses on the P-T diagram are tilted by it.
+- The Graph Inspector follows undo, redo, Graph Properties and edits on the canvas.
+- Dark graph canvas: black scatter points turn light too (colour-mapped points keep their colours).
+- Method search: a search with no match says so instead of silently showing every method; found/missing text is readable in dark mode.
+- P-T diagram reference lines (on by default; also Petrology > Add P-T Reference Lines for any graph): the Al2SiO5 reactions
+  and triple point of Pattison (1992; 550 C, 4.5 kbar) and geotherms of 10, 20 and 30 C/km.
+- Curve fits with a residual plot also make a layout page with the residuals under the fit.
+- Graph Inspector in folding sections: Labels; Axes and limits (from, to, scale, minor ticks); Look; Curves and colours (a swatch
+  per curve); Layers and more.
+- Side by Side: dragging the inner edge of one window moves the other with it.
+- Search Commands (Ctrl+K): the commands used last come first; matches without punctuation (feti, upb) and by initials (cpt).
+- Formula bar: typing a column name offers its column range (e.g. SiO2 -> B:B).
+- Digitizer: rotated or skewed scans are read correctly (calibration from both axis directions).
+- Coupled P-T solver: the bisection rescue keeps a result only where P(T(p)) really equals p, so a pole is not taken for a root.
+- Works with NumPy 2 (np.trapz was removed there).
+- The Bacon & Hirschmann (1988) envelope has one source in the code; buffer curves never start below -200 C.
+- Cell formulas as in Excel: typing after = lists the matching functions under the cell with their arguments (Tab or Enter puts
+  one in), an argument hint inside the brackets, F4 cycles $ on a reference, and Enter closes open brackets.
+- Point at cells while typing a formula: click for a cell, drag for a range, Ctrl+click to add another, click on another sheet
+  for a reference to it; every reference is outlined on the grid in its own colour.
+- Formula help: the function list and the argument hint open above the cell when there is no room below and stay on the
+  screen; the hint stays up while cells are picked; brackets and commas inside a 'quoted sheet name' are not counted.
+
+- Fe-Ti oxide thermometer: a pair whose model energy is undefined at some temperatures of the search grid no longer fails;
+  the solution is found on the valid part of the range.
+- Coupled P-T solver: steep thermometer-barometer pairs that used to oscillate and come out blank now settle (the iteration is
+  damped after five steps).
+- Coupled P-T solver: a new column "P-T in calibration range" checks the solved T and P against both calibrations, as the
+  single methods do.
+- Coupled P-T solver Monte Carlo: an absolute error for the liquid H2O content (H2O ± wt%) can be set; before, H2O carried only
+  the relative error of the analyses, which made the T and P uncertainty of hydrous Putirka pairs too small.
+- Help > What's New also finds CHANGELOG.md next to the program.
+- Send to Word / PowerPoint opens the file on macOS and Linux too, not only on Windows.
+- What's New and the tour use the theme's colours, so the secondary text is readable in dark mode.
+
 ## 1.31.0 (2026-11-19)
 
 - Drawn shapes can be edited on the graph. Double-click a shape (or right-click > Edit handles / nodes): drag the ends of a line

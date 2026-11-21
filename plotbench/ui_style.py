@@ -35,10 +35,15 @@ def arrows(theme):
     return out
 
 
+def ui_font():
+    from .workspace import ui_font as f
+    return f()
+
+
 def qss(theme):
     c = palette(theme); a, ah = ACCENT, ACCENT_HOVER; ar = arrows(theme)
     return f"""
-* {{ font-family: "Segoe UI", "Arial"; font-size: 9.5pt; }}
+* {{ font-family: "{ui_font()}"; font-size: 9.5pt; }}
 QMainWindow, QDialog {{ background: {c['bg']}; }}
 QMenuBar {{ background: {c['panel']}; border-bottom: 1px solid {c['border']}; padding: 2px 4px; }}
 QMenuBar::item {{ padding: 5px 10px; border-radius: 6px; background: transparent; }}

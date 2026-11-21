@@ -367,8 +367,10 @@ def two_oxide(spn, rhm, P=1.0, lo=773.15, hi=1773.15, sign=None):
     f = lambda T: exchange_dG(spn, rhm, T, P, sign)
     grid = np.linspace(lo, hi, 15); vals = [f(t) for t in grid]
     for i in range(len(grid) - 1):
-        if np.sign(vals[i]) != np.sign(vals[i + 1]):
-            T = brentq(f, grid[i], grid[i + 1], xtol=1e-3); lf = log_fo2(spn, rhm, T, P)
+        a, b = vals[i], vals[i + 1]
+        if not (np.isfinite(a) and np.isfinite(b)) or a * b > 0: continue  # NaN nodes (outside the model) bracket nothing
+        if a * b < 0 or a == 0:
+            T = grid[i] if a == 0 else brentq(f, grid[i], grid[i + 1], xtol=1e-3); lf = log_fo2(spn, rhm, T, P)
             return T - 273.15, lf, lf - log_fo2_nno(T, P)
     return np.nan, np.nan, np.nan
 

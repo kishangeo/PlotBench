@@ -48,7 +48,7 @@ from .graphs import (GraphWindow, StyleDialog, LayoutWindow, LayoutDialog, save_
                      set_default_theme, user_dir)
 
 APP = "PlotBench"
-VERSION = "1.31.0"
+VERSION = "1.32.0"
 
 
 class ReportWindow(QTextEdit):
@@ -219,6 +219,10 @@ class Main(QMainWindow):
         self.console = ConsoleWidget(self)
         cd = QDockWidget("Python Console", self); cd.setWidget(self.console); self.addDockWidget(Qt.BottomDockWidgetArea, cd)
         cd.hide(); self.console_dock = cd
+        from . import workspace as WS
+        self.inspector_dock = WS.inspector(self); self.inspector_dock.setVisible(bool(self.settings.get("inspector", False)))
+        self.inspector_dock.toggleViewAction().toggled.connect(lambda on: (self.settings.__setitem__("inspector", on), save_settings(self.settings)))
+        self.mdi.subWindowActivated.connect(lambda w: WS.follow(self, w))
         self.folders = []; self.pending_ops = []; self.undo_log = []; self.redo_log = []
         self.op_timer = QTimer(self); self.op_timer.setSingleShot(True); self.op_timer.setInterval(250); self.op_timer.timeout.connect(self.run_ops)
         self.script_bar = QToolBar("User scripts", self); self.script_bar.setObjectName("userscripts"); self.addToolBar(self.script_bar)
@@ -430,7 +434,9 @@ class Main(QMainWindow):
         menu.addAction(a); return a
 
     def run_command(self, text, slot):
-        if text not in ("Undo", "Redo", "Repeat Last Command"): self.last_command = (text, slot)
+        if text not in ("Undo", "Redo", "Repeat Last Command"):
+            self.last_command = (text, slot); rec = [t for t in self.settings.get("recent_commands", []) if t != text]
+            self.settings["recent_commands"] = ([text] + rec)[:10]
         self.current_command = text.rstrip(".")  # columns made by this command record it (formula bar, header tooltip)
         try: self.safe(slot)
         finally: self.current_command = None
@@ -711,6 +717,11 @@ class Main(QMainWindow):
         pc = self.console_dock.toggleViewAction(); pc.setShortcut(QKeySequence("Ctrl+Shift+P")); v.addAction(pc)
         v.addSeparator(); self.dark_action = QAction("Dark Theme", self); self.dark_action.setCheckable(True); self.dark_action.setShortcut(QKeySequence("Ctrl+Shift+D"))
         self.dark_action.toggled.connect(lambda on: self.set_theme("dark" if on else "light")); v.addAction(self.dark_action)
+        ia = self.inspector_dock.toggleViewAction(); ia.setText("Graph Inspector (live style panel)"); ia.setShortcut(QKeySequence("Ctrl+Shift+I")); v.addAction(ia)
+        dc = QAction("Dark Graph Canvas on Screen (dark theme only; exported files stay white)", self); dc.setCheckable(True)
+        dc.setChecked(bool(self.settings.get("dark_canvas", False))); dc.toggled.connect(lambda on: self._set_pref("dark_canvas", on, redraw=True)); v.addAction(dc)
+        cb = QAction("Graph Tools Only When a Graph Is in Front", self); cb.setCheckable(True)
+        cb.setChecked(bool(self.settings.get("contextual_bars", True))); cb.toggled.connect(lambda on: self._set_pref("contextual_bars", on)); v.addAction(cb)
         self.toolbar_menu = v.addMenu("Toolbars")
         rb = QAction("Ribbon Toolbar Layout (tabs at the top; untick for the classic side bars)", self); rb.setCheckable(True)
         rb.setChecked(self.settings.get("toolbar_layout", "ribbon") == "ribbon"); rb.toggled.connect(self.set_ribbon); v.addAction(rb)
@@ -876,6 +887,9 @@ class Main(QMainWindow):
         self.act(pt, "Thermobarometry (T and P from mineral and rock data)...", self.thermobarometry)
         self.act(pt, "Coupled P-T Solver (thermometer + barometer together)...", self.pt_solver)
         self.act(pt, "Fe-Ti Oxide Thermometer / Oxybarometer (Ghiorso & Evans 2008)...", self.fe_ti_oxides)
+        self.act(pt, "Compare Thermometers (2-4 side by side)...", self.compare_thermometers)
+        self.act(pt, "Add P-T Reference Lines (Al2SiO5, geotherms) to Graph", lambda: self.pt_overlays())
+        self.act(pt, "Fe-Ti Oxide Diagrams (fO2 buffers, Mg/Mn equilibrium)", lambda: self.fe_ti_diagrams(self.need_book()))
         self.act(pt, "Mineral Formula from Oxides (apfu)...", self.mineral_formula)
         self.act(pt, "CIPW Norm", self.cipw_norm)
 
@@ -956,6 +970,7 @@ class Main(QMainWindow):
 
         w = mb.addMenu("&Window")
         self.act(w, "Tile", self.mdi.tileSubWindows); self.act(w, "Cascade", self.mdi.cascadeSubWindows)
+        self.act(w, "Side by Side (the two windows used last)", self.side_by_side, "Ctrl+Alt+S")
         self.act(w, "Toggle Tabbed / Free windows", lambda: self.mdi.setViewMode(
             QMdiArea.SubWindowView if self.mdi.viewMode() == QMdiArea.TabbedView else QMdiArea.TabbedView))
         tl = mb.addMenu("&Tools")
@@ -1011,9 +1026,19 @@ class Main(QMainWindow):
         from .cmdhelp import KEYWORDS
         cmds = self.commands()
 
+        import re as _re
+        recent = self.settings.get("recent_commands", [])
+
+        def hit(c, w):
+            hay = f"{c[0]} {c[1]} {c[2]} {KEYWORDS.get(c[1].rstrip('.').strip(), '')}".lower()
+            if w in hay or w in _re.sub(r"[^a-z0-9]", "", hay): return True  # 'feti' finds Fe-Ti, 'upb' finds U-Pb
+            caps = "".join(p[0] for p in _re.findall(r"[a-z0-9]+", c[1].lower()))
+            return len(w) >= 2 and caps.startswith(w)  # initials: 'cps' = Coupled P-T Solver
+
         def matches(q):
-            words = q.lower().split()
-            return [c for c in cmds if all(w in f"{c[0]} {c[1]} {c[2]} {KEYWORDS.get(c[1].rstrip('.').strip(), '')}".lower() for w in words)]
+            words = q.lower().split(); out = [c for c in cmds if all(hit(c, w) for w in words)]
+            rank = {t: i for i, t in enumerate(recent)}  # recently used commands first
+            return sorted(out, key=lambda c: rank.get(c[1], len(rank)))
         if query is not None: return matches(query)
         d = QDialog(self); d.setWindowTitle("Search Commands"); d.resize(720, 460)
         box = QLineEdit(); box.setPlaceholderText("What do you want to do? e.g. deconvolution, baseline, smooth, ternary, export")
@@ -1022,7 +1047,7 @@ class Main(QMainWindow):
         def fill(q):
             lst.clear()
             for path, label, tip, a in matches(q)[:200]:
-                it = QListWidgetItem(f"{label}    ({path})"); it.setToolTip(tip); it.setData(Qt.UserRole, a); lst.addItem(it)
+                it = QListWidgetItem(("↻ " if label in recent[:5] else "") + f"{label}    ({path})"); it.setToolTip(tip); it.setData(Qt.UserRole, a); lst.addItem(it)
             if lst.count(): lst.setCurrentRow(0)
         lst.currentItemChanged.connect(lambda it, _: info.setText(it.toolTip() if it else ""))
 
@@ -1380,7 +1405,8 @@ class Main(QMainWindow):
             return TB.phase_oxides(sh.df.columns, sh.arr, prefix)
         if method is None:
             d = QDialog(self); d.setWindowTitle("Thermobarometry"); d.resize(720, 560)
-            pick = QComboBox(); pick.addItems(list(TB.METHODS)); pick.setMaxVisibleItems(20)
+            from . import petro_ui as PU
+            pbox, pick = PU.picker(list(TB.METHODS), cols, oxides)
             info = QLabel(); info.setWordWrap(True); info.setTextInteractionFlags(Qt.TextSelectableByMouse)
             form_box = QWidget(); form = QFormLayout(form_box); widgets = {}
 
@@ -1404,7 +1430,7 @@ class Main(QMainWindow):
             mc_on.setToolTip("Every measured value (columns and oxide analyses) is varied by the relative 1σ error, independently, and the "
                              "method rerun; the column holds the standard deviation of the results. The equation's own calibration error comes on top.")
             bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel); bb.accepted.connect(d.accept); bb.rejected.connect(d.reject)
-            lay = QVBoxLayout(d); lay.addWidget(QLabel("Method")); lay.addWidget(pick); lay.addWidget(info); lay.addWidget(form_box, 1); lay.addLayout(mc_row); lay.addWidget(bb)
+            lay = QVBoxLayout(d); lay.addWidget(QLabel("Method")); lay.addWidget(pbox); lay.addWidget(info); lay.addWidget(form_box, 1); lay.addLayout(mc_row); lay.addWidget(bb)
             if not d.exec(): return
             method = pick.currentText(); inputs = self._tb_values(widgets)
             if mc_on.isChecked(): mc = {"rel": mc_rel.value() / 100, "n": mc_n.value(), "P (kbar)": mc_p.value(), "T (C), if no column": mc_t.value()}
@@ -1482,8 +1508,8 @@ class Main(QMainWindow):
         if p_bar is None:
             got = self._fe_ti_dialog(sh, MT, IL)
             if got is None: return
-            spn_all, ilm_all, p_bar, bh = got
-        else: spn_all, ilm_all = TB.phase_oxides(cols, sh.arr, MT), TB.phase_oxides(cols, sh.arr, IL)
+            spn_all, ilm_all, p_bar, bh, draw = got
+        else: spn_all, ilm_all = TB.phase_oxides(cols, sh.arr, MT), TB.phase_oxides(cols, sh.arr, IL); draw = False
         for name, d in (("titanomagnetite", spn_all), ("ilmenite", ilm_all)):
             if "TiO2" not in d or "FeO" not in d:
                 raise RuntimeError(f"No {name} analysis found: name the columns e.g. 'Mt TiO2', 'Mt FeO' ... and 'Ilm TiO2', 'Ilm FeO' ... (wt%).")
@@ -1508,12 +1534,13 @@ class Main(QMainWindow):
         c = sh.add_column("dNNO Fe-Ti oxides", N, formula=how + "; relative to Ni-NiO of O'Neill & Pownceby (1993)", snap=False)
         if bh and np.isfinite(DV).any():
             bhow = (f"Bacon & Hirschmann (1988) Am Mineral 73, 57-61: log(Mg/Mn)Mt = {FT.BH88[0]} log(Mg/Mn)Ilm {FT.BH88[1]:+g} (atomic); "
-                    "'yes' = inside their 2 sigma envelope (Table 1: 0.9430x + 0.0124 to 0.9213x - 0.1696); for fresh volcanic rocks only")
+                    f"'yes' = inside their 2 sigma envelope (Table 1: {FT.BH88_UP[0]}x {FT.BH88_UP[1]:+g} to {FT.BH88_LO[0]}x {FT.BH88_LO[1]:+g}); for fresh volcanic rocks only")
             sh.add_column("log(Mg/Mn) Mt", LM, formula=bhow, snap=False); sh.add_column("log(Mg/Mn) Ilm", LI, formula=bhow, snap=False)
             sh.add_column("Mg/Mn deviation (B&H 1988)", DV, formula=bhow, snap=False); sh.add_column("Mg/Mn equilibrium (B&H 1988)", PASS, formula=bhow, snap=False)
         sh.model.refresh(); sh.changed(); self.mark_dirty(); ok = np.isfinite(T)
         self.statusBar().showMessage(("Stopped: " if stopped else "") + f"Fe-Ti oxides: {ok.sum()} rows solved"
                                      + (f", {(~ok).sum()} blank (no analysis pair, no solution or not reached)" if (~ok).any() else ""), 10000)
+        if draw and ok.any(): self.fe_ti_diagrams(sh, p_bar)
         return a, b, c
 
     def _fe_ti_dialog(self, sh, MT, IL):
@@ -1540,10 +1567,11 @@ class Main(QMainWindow):
         p = QDoubleSpinBox(); p.setRange(0.001, 20.0); p.setDecimals(3); p.setValue(1.0); p.setSuffix(" kbar")
         p.setToolTip("1 kbar = 1000 bar; the result changes little with pressure (about 1-2 deg C per kbar)"); f.addRow("Pressure", p)
         bh = QCheckBox("Test each pair for equilibrium with Mg/Mn (Bacon & Hirschmann 1988)"); bh.setChecked(True); f.addRow("", bh)
+        dr = QCheckBox("Draw the diagrams: T - log fO2 with the MH, NNO and FMQ buffers, and the Mg/Mn equilibrium band"); dr.setChecked(True); f.addRow("", dr)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel); bb.accepted.connect(d.accept); bb.rejected.connect(d.reject); lay.addWidget(bb)
         if not d.exec(): return None
         pick = lambda k: {ox: sh.arr(boxes[r][k].currentText()) for r, ox in enumerate(oxides) if boxes[r][k].currentText() != "(none)"}
-        return pick(0), pick(1), p.value() * 1000.0, bh.isChecked()
+        return pick(0), pick(1), p.value() * 1000.0, bh.isChecked(), dr.isChecked()
 
     def common_pb(self, sh=None, method=None, t0=None):
         """Common-Pb correction of 206Pb/238U ages: 204Pb (measured 206/204), 207Pb (measured 207/206; for young zircon) or 208Pb
@@ -1609,7 +1637,7 @@ class Main(QMainWindow):
         self.statusBar().showMessage(f"Discordance filter: {len(rows)} of {int(np.isfinite(dsc).sum())} analyses masked (|D| > {limit:g}%)", 10000)
         return rows
 
-    def pt_solver(self, sh=None, tmethod=None, pmethod=None, inputs=None, p0=10.0, mc=None):
+    def pt_solver(self, sh=None, tmethod=None, pmethod=None, inputs=None, p0=10.0, mc=None, diagram=False, reference=True):
         """T and P solved together, row by row, from a thermometer that needs P and a barometer that needs T (or not).
         mc: None, or {"rel": relative 1-sigma of the analyses, "n": draws} for two Monte Carlo 1-sigma columns."""
         from PySide6.QtWidgets import QScrollArea
@@ -1620,7 +1648,8 @@ class Main(QMainWindow):
         oxides = lambda prefix=False: TB.phase_oxides(sh.df.columns, sh.arr, prefix)
         if tmethod is None:
             d = QDialog(self); d.setWindowTitle("Coupled P-T solver"); d.resize(760, 680)
-            tp, pp = QComboBox(), QComboBox(); tp.addItems(th); pp.addItems(ba); tp.setMaxVisibleItems(20); pp.setMaxVisibleItems(20)
+            from . import petro_ui as PU
+            tbox, tp = PU.picker(th, cols, oxides); pbox, pp = PU.picker(ba, cols, oxides)
             box = QWidget(); form = QFormLayout(box); widgets = {}; info = QLabel(); info.setWordWrap(True)
             start = QDoubleSpinBox(); start.setRange(0, 100); start.setValue(p0)
 
@@ -1639,25 +1668,40 @@ class Main(QMainWindow):
             sc = QScrollArea(); sc.setWidgetResizable(True); sc.setWidget(box)
             bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel); bb.accepted.connect(d.accept); bb.rejected.connect(d.reject)
             lay = QVBoxLayout(d)
-            for w_ in (QLabel("Thermometer (depends on P)"), tp, QLabel("Barometer (may depend on T)"), pp, info): lay.addWidget(w_)
+            for w_ in (QLabel("Thermometer (depends on P)"), tbox, QLabel("Barometer (may depend on T)"), pbox, info): lay.addWidget(w_)
             from PySide6.QtWidgets import QCheckBox, QSpinBox, QHBoxLayout
             mc_on = QCheckBox("Monte Carlo uncertainty (1σ columns for T and P)"); mc_rel = QDoubleSpinBox(); mc_rel.setRange(0.1, 50); mc_rel.setValue(2.0)
             mc_rel.setSuffix(" % per analysis"); mc_n = QSpinBox(); mc_n.setRange(30, 2000); mc_n.setValue(200); mc_n.setSuffix(" draws")
             mc_on.setToolTip("Every measured value is varied by the relative 1σ error, independently, and the pair solved again; the columns "
                              "hold the standard deviation of T and of P. The calibration errors of the two equations come on top.")
             mc_row = QHBoxLayout(); [mc_row.addWidget(x) for x in (mc_on, mc_rel, mc_n)]; mc_row.addStretch()
-            f2 = QFormLayout(); f2.addRow("Starting P (kbar)", start); lay.addLayout(f2); lay.addWidget(sc, 1); lay.addLayout(mc_row); lay.addWidget(bb)
+            mc_h = QDoubleSpinBox(); mc_h.setRange(0, 5); mc_h.setSingleStep(0.1); mc_h.setValue(0.0); mc_h.setPrefix("H₂O ± "); mc_h.setSuffix(" wt%")
+            mc_h.setToolTip("Absolute 1σ of the liquid water content (used when a method takes H2O); 0 = the same relative error as the analyses")
+            mc_row.insertWidget(3, mc_h)
+            dg = QCheckBox("Draw a P-T diagram: each sample's thermometer and barometer curves, the solutions and (with Monte Carlo) 1σ ellipses")
+            dg.setChecked(True); rf = QCheckBox("Add reference lines to the diagram: Al₂SiO₅ reactions (Pattison 1992) and geotherms of 10, 20, 30 °C/km")
+            rf.setChecked(True); dg.toggled.connect(rf.setEnabled)
+            f2 = QFormLayout(); f2.addRow("Starting P (kbar)", start); lay.addLayout(f2); lay.addWidget(sc, 1); lay.addLayout(mc_row); lay.addWidget(dg); lay.addWidget(rf); lay.addWidget(bb)
             if not d.exec(): return
             tmethod, pmethod, p0, inputs = tp.currentText(), pp.currentText(), start.value(), self._tb_values(widgets)
-            if mc_on.isChecked(): mc = {"rel": mc_rel.value() / 100, "n": mc_n.value()}
-            d.deleteLater()
-        real = {str(c): c for c in sh.df.columns}
+            if mc_on.isChecked(): mc = {"rel": mc_rel.value() / 100, "n": mc_n.value(), "Liquid H2O (wt%)": mc_h.value()}
+            diagram, reference = dg.isChecked(), rf.isChecked(); d.deleteLater()
+        real = {str(c): c for c in sh.df.columns}; sd = None
         T, P, it = TB.solve_pt(tmethod, pmethod, {k: (real.get(v, v) if isinstance(v, str) else v) for k, v in (inputs or {}).items()},
                                sh.arr, oxides, p0)
         tm, pm = TB.METHODS[tmethod], TB.METHODS[pmethod]; used = "; ".join(f"{k} = {v}" for k, v in (inputs or {}).items())
         how = f"Coupled P-T solver: {tmethod} ({tm['ref']}) with {pmethod} ({pm['ref']}); inputs {used}"
         nt = sh.add_column(f"{tm['out']} P-T (C)", T, units="°C", formula=how)
         npr = sh.add_column(f"{pm['out']} P-T (kbar)", P, units="kbar", formula=how, snap=False); note = ""
+        if tmethod in TB.VALID or pmethod in TB.VALID:  # the solved pair checked against both calibrations, as single methods are
+            given = {k: (sh.arr(real.get(v, v)) if isinstance(v, str) else v) for k, v in (inputs or {}).items() if v is not None}
+            ft = TB.in_range(tmethod, T, {**given, "P (kbar)": P}, len(sh.df))
+            fp = TB.in_range(pmethod, P, {**given, "T (C) column": None, "T (C), if no column": T}, len(sh.df))
+            known = ~(np.isnan(ft) & np.isnan(fp)); good = np.where(np.isnan(ft), 1, ft) * np.where(np.isnan(fp), 1, fp)
+            sh.add_column("P-T in calibration range", np.where(known, np.where(good == 1, "yes", "no"), None).astype(object),
+                          formula="; ".join(TB.VALID[m]["ref"] for m in (tmethod, pmethod) if m in TB.VALID), snap=False)
+            nout = int(np.sum(known & (good == 0)))
+            if nout: note = f"; {nout} rows outside the calibration range"
         if mc:
             from PySide6.QtWidgets import QProgressDialog
             nd = int(mc.get("n", 200)); prog = QProgressDialog(f"Monte Carlo uncertainty: {nd} solutions...", "Cancel", 0, nd, self)
@@ -1666,16 +1710,112 @@ class Main(QMainWindow):
             def step(i):
                 prog.setValue(i); QApplication.processEvents(); return not prog.wasCanceled()
             cols_in = {k: (real.get(v, v) if isinstance(v, str) else v) for k, v in (inputs or {}).items()}
-            try: sd = TB.solve_pt_mc(tmethod, pmethod, cols_in, sh.arr, oxides, p0, rel=mc["rel"], n=nd, progress=step)
+            num_sd = {k: v for k, v in mc.items() if k not in ("rel", "n") and v}
+            try: sd = TB.solve_pt_mc(tmethod, pmethod, cols_in, sh.arr, oxides, p0, rel=mc["rel"], n=nd, progress=step, num_sd=num_sd)
             finally: prog.close(); prog.deleteLater()
             if sd is None: note = "; Monte Carlo cancelled (no uncertainty columns)"
             else:
-                why = f"Monte Carlo, {nd} solutions, {100 * mc['rel']:g} % relative 1-sigma on each measured input"
+                why = f"Monte Carlo, {nd} solutions, {100 * mc['rel']:g} % relative 1-sigma on each measured input" + "".join(f", {k} ± {v:g}" for k, v in num_sd.items())
                 sh.add_column(f"1s {tm['out']} P-T (C)", sd[0], units="°C", formula=why, snap=False, desig="yErr")
                 sh.add_column(f"1s {pm['out']} P-T (kbar)", sd[1], units="kbar", formula=why, snap=False, desig="yErr")
         sh.model.refresh(); sh.changed(); self.mark_dirty(); ok = np.isfinite(T) & np.isfinite(P)
+        if diagram:
+            cols_in = {k: (real.get(v, v) if isinstance(v, str) else v) for k, v in (inputs or {}).items()}
+            self.pt_diagram(sh, tmethod, pmethod, cols_in, oxides, nt, npr, T, P, *(sd if sd is not None else (None, None, None)),
+                            overlays=("al2sio5", "geotherms") if reference else ())
         self.statusBar().showMessage(f"P and T solved for {ok.sum()} rows ({it} iterations)" + (f"; {(~ok).sum()} rows blank" if (~ok).any() else "") + note, 8000)
         return nt, npr
+
+    def pt_diagram(self, sh, tmethod, pmethod, cols_in, oxides, tcol, pcol, T, P, sdT=None, sdP=None, rho=None, overlays=("al2sio5", "geotherms")):
+        """Graph of the coupled P-T solution: the solved points and, for up to 12 samples, the thermometer curve T(P), the barometer
+        curve P(T) and the 1-sigma ellipse; the curves go to a new sheet 'P-T curves' of the same workbook."""
+        from . import petro_ui as PU
+        cur = PU.pt_curves(tmethod, pmethod, cols_in, sh.arr, oxides, T, P, sdT, sdP, rho=rho)
+        if cur is None: return None
+        cs = sh.book.add_sheet("P-T curves", pd.DataFrame(cur)); sh.book.tabs.setCurrentWidget(sh)
+        g = self.new_graph(sh, "Scatter", tcol, [pcol])
+        for x, y, fmt, label in (("Thermometer T (C)", "Thermometer P (kbar)", "-", tmethod), ("Barometer T (C)", "Barometer P (kbar)", "--", pmethod),
+                                 ("1s ellipse T (C)", "1s ellipse P (kbar)", ":", "1σ (Monte Carlo)")):
+            if x in cur: g.spec.setdefault("annotations", []).append({"kind": "series", "book": sh.book.name, "sheet": cs.name, "x": x, "y": y, "style": fmt, "label": label})
+        self.pt_overlays(g, overlays, T, P)
+        g.spec["style"] = {**g.spec.get("style", {}), "xlabel": "T (°C)", "ylabel": "P (kbar)", "title": "Coupled P-T solution"}
+        g.draw(); self.mark_dirty(); return g
+
+    def pt_overlays(self, g=None, overlays=("al2sio5", "geotherms"), T=None, P=None):
+        """Reference lines on a P-T graph (T in C on X, P in kbar on Y): the Al2SiO5 reactions and triple point of Pattison (1992)
+        and geotherms of 10, 20 and 30 C/km. The lines go to a sheet 'P-T reference' of a workbook of their own."""
+        from . import petro_ui as PU
+        g = g or self.need_graph()
+        if not g or not overlays: return g
+        T = np.asarray(T if T is not None else [400.0, 900.0], float); P = np.asarray(P if P is not None else [2.0, 10.0], float)
+        tmax = max(900.0, float(np.nanmax(T)) + 100) if np.isfinite(T).any() else 900.0
+        pmax = max(12.0, float(np.nanmax(P)) * 1.3) if np.isfinite(P).any() else 12.0
+        cur = PU.pt_reference(tmax, pmax, overlays)
+        book = self.new_book(pd.DataFrame(cur), name=self.uniq("PTref")); sh = book.current()
+        for x, y, fmt, label in PU.PT_LINES:
+            if x in cur: g.spec.setdefault("annotations", []).append({"kind": "series", "book": book.name, "sheet": sh.name, "x": x, "y": y, "style": fmt, "label": label})
+        g.draw(); self.mdi.setActiveSubWindow(g.parent()) if hasattr(g, "parent") and g.parent() else None; self.mark_dirty(); return g
+
+    def fe_ti_diagrams(self, sh, p_bar=1000.0):
+        """T against log fO2 with the MH, NNO and FMQ buffers, and (after the Mg/Mn test) log(Mg/Mn) magnetite against ilmenite
+        with the Bacon & Hirschmann (1988) equilibrium band. The curves go to a new sheet 'Fe-Ti curves'."""
+        from . import petro_ui as PU
+        if sh is None: return None
+        T, F = "T Fe-Ti oxides (C)", "log fO2 Fe-Ti oxides"
+        if T not in sh.df.columns: raise RuntimeError("Run the Fe-Ti oxide thermometer first.")
+        has_bh = "log(Mg/Mn) Ilm" in sh.df.columns
+        cur = PU.fe_ti_curves(sh.arr(T), sh.arr("log(Mg/Mn) Ilm") if has_bh else None, p_bar)
+        cs = sh.book.add_sheet("Fe-Ti curves", pd.DataFrame(cur)); sh.book.tabs.setCurrentWidget(sh); out = []
+        g = self.new_graph(sh, "Scatter", T, [F])
+        for b, fmt in (("MH", "-"), ("NNO", "--"), ("FMQ", ":")):
+            g.spec.setdefault("annotations", []).append({"kind": "series", "book": sh.book.name, "sheet": cs.name, "x": "Buffer T (C)", "y": f"log fO2 {b}", "style": fmt, "label": b})
+        g.spec["style"] = {**g.spec.get("style", {}), "xlabel": "T (°C)", "ylabel": "log fO$_2$", "title": "Fe-Ti oxides: T and fO$_2$"}; g.draw(); out.append(g)
+        if has_bh and "log(Mg/Mn) Mt" in sh.df.columns:
+            g2 = self.new_graph(sh, "Scatter", "log(Mg/Mn) Ilm", ["log(Mg/Mn) Mt"])
+            for y, fmt in (("B&H 1988 equilibrium", "-"), ("B&H 1988 +2s", ":"), ("B&H 1988 -2s", ":")):
+                g2.spec.setdefault("annotations", []).append({"kind": "series", "book": sh.book.name, "sheet": cs.name, "x": "log(Mg/Mn) Ilm (line)", "y": y, "style": fmt, "label": y})
+            g2.spec["style"] = {**g2.spec.get("style", {}), "xlabel": "log(Mg/Mn) ilmenite", "ylabel": "log(Mg/Mn) magnetite", "title": "Mg/Mn equilibrium (Bacon & Hirschmann 1988)"}
+            g2.draw(); out.append(g2)
+        self.mark_dirty(); return out
+
+    def compare_thermometers(self, sh=None, methods=None, p_kbar=None):
+        """Several thermometers on the same rows, side by side: each one's T column (inputs guessed from the column names, as in
+        the Thermobarometry dialog), the difference of each from the first, and a summary of the differences."""
+        from PySide6.QtWidgets import QListWidget, QListWidgetItem
+        from . import thermobaro as TB, petro_ui as PU
+        sh = sh or self.need_book()
+        if not sh: return
+        cols = [str(c) for c in sh.df.columns]; oxides = lambda prefix=False: TB.phase_oxides(sh.df.columns, sh.arr, prefix)
+        ready = [n for n, m in TB.METHODS.items() if m["unit"] == "deg C" and not PU.missing(n, cols, oxides)]
+        if methods is None:
+            if len(ready) < 2: raise RuntimeError("This sheet has the inputs of fewer than two thermometers. Name the columns as in the Thermobarometry dialog.")
+            d = QDialog(self); d.setWindowTitle("Compare thermometers"); lay = QVBoxLayout(d); d.resize(560, 520)
+            lay.addWidget(QLabel("Tick 2 to 4 thermometers whose inputs are all in this sheet. The first ticked is the reference for the differences."))
+            lst = QListWidget()
+            for n in ready:
+                it_ = QListWidgetItem(f"{n}   [{PU.group(n)}]"); it_.setData(Qt.UserRole, n); it_.setCheckState(Qt.Unchecked); lst.addItem(it_)
+            lay.addWidget(lst, 1); f = QFormLayout(); pk = QDoubleSpinBox(); pk.setRange(0, 100); pk.setValue(10.0); pk.setSuffix(" kbar")
+            f.addRow("Pressure (for methods that take P)", pk); lay.addLayout(f)
+            bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel); bb.accepted.connect(d.accept); bb.rejected.connect(d.reject); lay.addWidget(bb)
+            if not d.exec(): return
+            methods = [lst.item(i).data(Qt.UserRole) for i in range(lst.count()) if lst.item(i).checkState() == Qt.Checked]; p_kbar = pk.value()
+        if not 2 <= len(methods) <= 4: raise RuntimeError("Choose 2 to 4 thermometers.")
+        names = []
+        for n in methods:
+            inputs = {}
+            for kind, label, extra in TB.METHODS[n]["inputs"]:
+                if kind in ("col", "colopt"): inputs[label] = TB.guess_column(cols, extra)
+                elif kind == "num": inputs[label] = float(p_kbar if label == "P (kbar)" and p_kbar is not None else extra)
+            names.append(self.thermobarometry(sh, n, inputs))
+        ref = sh.arr(names[0]); rows = []
+        for n, c in zip(methods[1:], names[1:]):
+            dlt = sh.arr(c) - ref; sh.add_column(f"dT {c} - {names[0]}", dlt, units="°C", formula=f"{n} minus {methods[0]}", snap=False)
+            ok = np.isfinite(dlt); rows.append([n, int(ok.sum()), float(np.mean(dlt[ok])) if ok.any() else np.nan,
+                                                float(np.std(dlt[ok], ddof=1)) if ok.sum() > 1 else np.nan, float(np.max(np.abs(dlt[ok]))) if ok.any() else np.nan])
+        sh.model.refresh(); sh.changed(); self.mark_dirty()
+        self.report("Thermometer comparison", table_html(f"Differences from {methods[0]} ({sh.book.name}/{sh.name})", rows,
+                                                          ["Thermometer", "n", "Mean dT (°C)", "SD of dT (°C)", "Largest |dT| (°C)"]))
+        return names
 
     # ---- geochronology
     def isochron_report(self, sh=None, system=None):
@@ -2118,6 +2258,18 @@ class Main(QMainWindow):
                 try: w.draw()
                 except Exception as e: self.statusBar().showMessage(f"{w.name}: {e}", 6000)
 
+    def _set_pref(self, key, on, redraw=False):
+        self.settings[key] = bool(on); save_settings(self.settings)
+        if redraw: self.refresh_all()
+        if key == "contextual_bars":
+            from . import workspace as WS
+            if on: WS.follow(self, self.mdi.activeSubWindow())
+            else: [b.setVisible(True) for b in getattr(self, "side_bars", []) if b.objectName() == "tb_left"]
+
+    def side_by_side(self):
+        from . import workspace as WS
+        if not WS.side_by_side(self): self.statusBar().showMessage("Open two windows first (e.g. a sheet and its graph).", 6000)
+
     def refresh_all(self):
         for w in self.windows():
             if w.kind in ("graph", "layout"): w.draw()
@@ -2191,6 +2343,9 @@ class Main(QMainWindow):
             rg = self.new_graph(b, "Scatter", b.x_col(), [res]); rg.spec["style"] = {"title": f"Residuals of {yname}"}
             rg.fits.append({"x": [float(np.nanmin(full_x)), float(np.nanmax(full_x))], "y": [0.0, 0.0], "label": "zero", "style": "k--"})
             rg.draw()
+            from .graphs import LayoutWindow  # the fit with its residuals underneath, on one page (both graphs stay live)
+            self.add_win(LayoutWindow(self, self.uniq("Layout"), {"graphs": [g.name, rg.name], "rows": 2, "cols": 1, "title": "",
+                                                                  "labels": True, "width_in": 6.0, "height_in": 7.0})).draw()
 
     def fit_poly(self, order):
         b, xn, yn, x, y = self.first_xy()
@@ -2613,6 +2768,7 @@ class Main(QMainWindow):
         from .toolbars import apply_theme, build_toolbars
         if getattr(self, "_theme", None) == theme and getattr(self, "side_bars", None): return
         self._theme = theme; SH.PREFS["theme"] = theme; apply_theme(QApplication.instance(), theme)
+        if self.settings.get("dark_canvas") and hasattr(self, "mdi"): self.refresh_all()
         build_toolbars(self, theme)
         for a in (getattr(self, "dark_action", None), getattr(self, "theme_switch", None)):
             if a is not None and a.isChecked() != (theme == "dark"): a.blockSignals(True); a.setChecked(theme == "dark"); a.blockSignals(False)
@@ -3588,8 +3744,9 @@ class Main(QMainWindow):
             return None
         self.statusBar().showMessage(f"{len(pics)} graph{'s' if len(pics) != 1 else ''} written to {fn}", 8000)
         if open_it:
-            try: os.startfile(fn)  # Windows; elsewhere the file is simply left for the user to open
-            except (AttributeError, OSError): pass
+            from PySide6.QtGui import QDesktopServices
+            from PySide6.QtCore import QUrl
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.abspath(fn)))  # Word / PowerPoint / LibreOffice on any system
         return fn
 
     def copy_analyses(self, src=None, targets=None):

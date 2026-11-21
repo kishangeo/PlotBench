@@ -27,9 +27,10 @@ def steps(main):
 class Tour(QDialog):
     def __init__(self, main):
         super().__init__(main, Qt.Tool | Qt.FramelessWindowHint); self.main = main; self.items = steps(main); self.i = -1; self.band = None
-        self.setStyleSheet("QDialog { border: 2px solid #14a39a; border-radius: 8px; }")
+        from .ui_style import ACCENT, palette
+        self.setStyleSheet(f"QDialog {{ border: 2px solid {ACCENT}; border-radius: 8px; }}")
         self.text = QLabel(); self.text.setWordWrap(True); self.text.setMinimumWidth(330); self.text.setMaximumWidth(380)
-        self.count = QLabel(); self.count.setStyleSheet("color: gray")
+        self.count = QLabel(); self.count.setStyleSheet(f"color: {palette(getattr(main, '_theme', 'light'))['muted']}")
         self.back = QPushButton("Back"); self.next = QPushButton("Next"); skip = QPushButton("Close"); self.next.setDefault(True)
         self.back.clicked.connect(lambda: self.go(self.i - 1)); self.next.clicked.connect(lambda: self.go(self.i + 1)); skip.clicked.connect(self.reject)
         row = QHBoxLayout(); row.addWidget(self.count); row.addStretch(); row.addWidget(skip); row.addWidget(self.back); row.addWidget(self.next)

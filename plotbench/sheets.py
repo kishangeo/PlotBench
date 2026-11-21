@@ -200,10 +200,34 @@ class SheetView(QTableView):
         br = self.visualRect(self.model().index(b[2], b[3])).bottomRight()
         return QRect(br.x() - 3, br.y() - 3, 7, 7)
 
+    def _assist(self):
+        """The formula being typed in this workbook (here or on another sheet of it), if any."""
+        a = getattr(getattr(self.sheet, "book", None), "_formula_assist", None)
+        return a if a is not None and a.alive() and a.ed.text().startswith("=") else None
+
+    def _cell_at(self, pos):
+        idx = self.indexAt(pos)
+        return (idx.row() - HEAD, idx.column()) if idx.isValid() and idx.row() >= HEAD else None
+
+    def _paint_refs(self, a):
+        from PySide6.QtGui import QPainter, QColor, QPen
+        from PySide6.QtCore import Qt as _Qt
+        hl = a.highlights(self.sheet)
+        if not hl: return
+        p = QPainter(self.viewport()); m = self.model(); nr, nc = m.rowCount() - 1, m.columnCount() - 1
+        for r1, c1, r2, c2, col, now in hl:
+            if r1 + HEAD > nr or c1 > nc: continue
+            rect = self.visualRect(m.index(r1 + HEAD, c1)).united(self.visualRect(m.index(min(r2 + HEAD, nr), min(c2, nc))))
+            fill = QColor(col); fill.setAlpha(28); p.fillRect(rect, fill)
+            p.setPen(QPen(QColor(col), 2, _Qt.DashLine if now else _Qt.SolidLine)); p.drawRect(rect.adjusted(1, 1, -1, -1))
+        p.end()
+
     def paintEvent(self, e):
         super().paintEvent(e)
         from PySide6.QtGui import QPainter, QColor, QPen
         from PySide6.QtCore import Qt as _Qt
+        a = self._assist()
+        if a is not None: self._paint_refs(a)
         if self._flash:
             p = QPainter(self.viewport())
             for c in self._flash: p.fillRect(self.columnViewportPosition(c), 0, self.columnWidth(c), self.viewport().height(), QColor(20, 163, 154, 60))
@@ -222,6 +246,11 @@ class SheetView(QTableView):
 
     def mousePressEvent(self, e):
         from PySide6.QtCore import Qt as _Qt
+        a = self._assist()  # formula point mode: a click puts the cell's reference into the formula being typed
+        if a is not None and e.button() == _Qt.LeftButton:
+            cell = self._cell_at(e.position().toPoint()); ctrl = bool(e.modifiers() & _Qt.ControlModifier)
+            if cell is not None and a.can_pick(ctrl):
+                a.pick(self.sheet, *cell, *cell, ctrl=ctrl); self._pick_anchor = cell; e.accept(); return
         hr = self._handle_rect()
         if e.button() == _Qt.LeftButton and hr is not None and hr.adjusted(-3, -3, 3, 3).contains(e.position().toPoint()):
             self._fill_src = self._block(); self._fill_to = None; e.accept(); return
@@ -230,6 +259,10 @@ class SheetView(QTableView):
     def mouseMoveEvent(self, e):
         from PySide6.QtCore import Qt as _Qt
         pos = e.position().toPoint()
+        if getattr(self, "_pick_anchor", None) is not None and e.buttons() & _Qt.LeftButton:
+            a, cell = self._assist(), self._cell_at(pos)
+            if a is not None and cell is not None: a.pick(self.sheet, *self._pick_anchor, *cell)  # the range follows the drag
+            e.accept(); return
         if self._fill_src:
             t, l, b, r = self._fill_src
             if pos.y() > self.viewport().height() - 12: self.verticalScrollBar().setValue(self.verticalScrollBar().value() + 1)
@@ -249,6 +282,12 @@ class SheetView(QTableView):
         super().mouseMoveEvent(e)
 
     def mouseReleaseEvent(self, e):
+        if getattr(self, "_pick_anchor", None) is not None:
+            self._pick_anchor = None; a = self._assist(); e.accept()
+            if a is not None and a.sh is not self.sheet:  # picked on another sheet: back to the formula's own sheet to go on typing
+                a.sh.book.tabs.setCurrentWidget(a.sh)
+            if a is not None: a.ed.setFocus()
+            return
         if self._fill_src:
             src, to = self._fill_src, self._fill_to; self._fill_src = self._fill_to = None; self.viewport().update()
             if to:
@@ -266,6 +305,7 @@ class SheetView(QTableView):
 
     def mouseDoubleClickEvent(self, e):
         """Double-click the fill handle: fill down as far as the column next to the selection has data (as in Excel)."""
+        if self._assist() is not None and self._cell_at(e.position().toPoint()) is not None: e.accept(); return  # picking, not editing
         hr = self._handle_rect()
         if hr is not None and hr.adjusted(-3, -3, 3, 3).contains(e.position().toPoint()):
             self._fill_src = None; t, l, b, r = self._block(); sh = self.sheet; end = None
@@ -429,6 +469,7 @@ class Sheet(QWidget):
             tok, _s = token()
             if not tok or re.match(r"[A-Za-z]{1,3}\d+$", tok): comp.popup().hide(); return  # a cell address such as B12
             names = sorted(CF.FUNCS) + [s.name + "!" for s in getattr(self.book, "sheets", []) if s is not self and re.match(r"^[A-Za-z_][A-Za-z0-9_.]*$", s.name)]
+            names += [f"{c} → {col_letter(i)}:{col_letter(i)}" for i, c in enumerate(map(str, self.df.columns))]  # column names give their letters
             model.setStringList(names); comp.setCompletionPrefix(tok)
             if comp.completionCount() and comp.currentCompletion().upper() != tok.upper(): comp.complete()
             else: comp.popup().hide()
@@ -436,7 +477,8 @@ class Sheet(QWidget):
         def insert(name):
             tok, s = token()
             if tok is None: return
-            t, p = self.fx.text(), self.fx.cursorPosition(); add = name if name.endswith("!") else name + "("
+            t, p = self.fx.text(), self.fx.cursorPosition()
+            add = name.split(" → ", 1)[1] if " → " in name else name if name.endswith("!") else name + "("
             self.fx.setText(t[:s] + add + t[p:]); self.fx.setCursorPosition(s + len(add))
         self.fx.textEdited.connect(edited); comp.activated[str].connect(insert); self._comp, self._comp_insert = comp, insert
 

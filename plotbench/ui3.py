@@ -30,6 +30,29 @@ def calibrate(px, val, log=False):
     return f
 
 
+def calibrate_2d(px, val, logx=False, logy=False):
+    """Pixel -> data for a scan that may be rotated or skewed. px: the four clicks X1, X2 (on the X axis) and Y1, Y2 (on the Y
+    axis); val: their values. The axis directions X2 - X1 and Y2 - Y1 form the basis, so a point's X is read along lines parallel
+    to the Y axis and its Y along lines parallel to the X axis. For an upright scan this is the same as reading each axis alone."""
+    p = np.asarray(px, float); v = [float(a) for a in val]
+    ux, uy = p[1] - p[0], p[3] - p[2]
+    if not np.hypot(*ux): raise ValueError("the two X calibration clicks are at the same place; click two different ticks")
+    if not np.hypot(*uy): raise ValueError("the two Y calibration clicks are at the same place; click two different ticks")
+    B = np.column_stack([ux, uy])
+    if abs(np.linalg.det(B)) < 1e-9 * np.hypot(*ux) * np.hypot(*uy): raise ValueError("the X and Y calibration clicks lie on one line")
+    for log, a, b, ax in ((logx, v[0], v[1], "X"), (logy, v[2], v[3], "Y")):
+        if log and (a <= 0 or b <= 0): raise ValueError(f"a log {ax} axis needs positive calibration values; untick Log or use other ticks")
+    lx = (np.log10(v[0]), np.log10(v[1])) if logx else (v[0], v[1]); ly = (np.log10(v[2]), np.log10(v[3])) if logy else (v[2], v[3])
+    Binv = np.linalg.inv(B)
+
+    def f(pts):
+        q = np.atleast_2d(np.asarray(pts, float))
+        s = (Binv @ (q - p[0]).T)[0]; t = (Binv @ (q - p[2]).T)[1]  # fraction along X1->X2, and along Y1->Y2
+        x = lx[0] + s * (lx[1] - lx[0]); y = ly[0] + t * (ly[1] - ly[0])
+        return (10 ** x if logx else x), (10 ** y if logy else y)
+    return f
+
+
 class Digitizer(QDialog):
     def __init__(self, parent, path=None):
         super().__init__(parent); self.setWindowTitle("Digitizer"); self.resize(1100, 760)
@@ -110,7 +133,7 @@ class Digitizer(QDialog):
         pen = QPen(QColor(230, 20, 20)); pen.setWidth(2); p.setPen(pen); p.drawLine(c, 0, c, pm.height()); p.drawLine(0, c, pm.width(), c)
         p.drawRect(c - LOUPE_ZOOM // 2, c - LOUPE_ZOOM // 2, LOUPE_ZOOM, LOUPE_ZOOM); p.end(); self.loupe.setPixmap(pm)
         t = self.transform(); txt = f"pixel {ev.xdata:.1f}, {ev.ydata:.1f}"
-        if t is not None: txt += f"   ->   X = {float(t[0](ev.xdata)):.5g}, Y = {float(t[1](ev.ydata)):.5g}"
+        if t is not None: X, Y = t([(ev.xdata, ev.ydata)]); txt += f"   ->   X = {float(X[0]):.5g}, Y = {float(Y[0]):.5g}"
         self.where.setText(txt)
 
     def accept(self):
@@ -127,16 +150,15 @@ class Digitizer(QDialog):
     def transform(self):
         if len(self.cal_px) < 4: return None
         try:
-            fx = calibrate((self.cal_px[0][0], self.cal_px[1][0]), self.cal_val[0:2], self.logx.isChecked())
-            fy = calibrate((self.cal_px[2][1], self.cal_px[3][1]), self.cal_val[2:4], self.logy.isChecked())
+            f = calibrate_2d(self.cal_px[:4], self.cal_val[:4], self.logx.isChecked(), self.logy.isChecked())
         except ValueError as e:
             self.problem = str(e); return None
-        self.problem = ""; return fx, fy
+        self.problem = ""; return f
 
     def data(self):
         t = self.transform()
         if t is None or not self.points: return pd.DataFrame({"X": [], "Y": []})
-        p = np.array(self.points); return pd.DataFrame({"X": t[0](p[:, 0]), "Y": t[1](p[:, 1])}).sort_values("X", ignore_index=True)
+        X, Y = t(np.array(self.points)); return pd.DataFrame({"X": X, "Y": Y}).sort_values("X", ignore_index=True)
 
     def refresh_list(self, *_):
         self.lst.clear(); d = self.data(); self.lst.addItems([f"{a:.6g}, {b:.6g}" for a, b in zip(d.X, d.Y)]); self.update_msg()

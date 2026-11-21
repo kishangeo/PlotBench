@@ -52,6 +52,12 @@ THEMES = {
     "Monochrome print": {"palette": "Grayscale", "cmap": "gray", "marker": "keep"},
     "Presentation (large)": {"font_size": 16.0, "line_width": 2.5, "marker_size": 8.0},
     "Journal single column (3.5 in)": {"width_in": 3.5, "height_in": 2.8, "font_size": 8.0, "line_width": 1.0, "marker_size": 3.5},
+    # column widths from the publishers' artwork guides (as in the export dialog), Arial 7 pt, thin lines, 600 dpi
+    **{f"Journal: {name}": {"width_in": mm / 25.4, "height_in": mm / 25.4 * 0.78, "font": "Arial", "font_size": 7.0, "line_width": 0.75,
+                            "marker_size": 3.0, "dpi": 600}
+       for name, mm in (("Nature single column (89 mm)", 89), ("Nature double column (183 mm)", 183), ("Elsevier single column (90 mm)", 90),
+                        ("Elsevier full width (190 mm)", 190), ("Springer single column (84 mm)", 84), ("Springer double column (174 mm)", 174),
+                        ("Wiley / AGU single column (85 mm)", 85), ("Wiley / AGU double column (178 mm)", 178))},
 }
 
 
@@ -883,6 +889,11 @@ class GraphWindow(QWidget):
     def draw(self):
         if hasattr(self, "host"): self.host.relayout()
         self.render(self.fig)
+        if (getattr(self.main, "settings", None) or {}).get("dark_canvas") and getattr(self.main, "_theme", "") == "dark":
+            from .workspace import dark_canvas
+            dark_canvas(self.fig)  # screen only: exports draw a fresh figure
+        insp = getattr(self.main, "inspector_dock", None)  # keep the inspector in step after undo, redo, dialogs and canvas edits
+        if insp is not None and insp.isVisible() and not getattr(insp, "loading", False) and hasattr(insp, "load"): insp.load()
         for L in (self.main.windows() if hasattr(self.main, "windows") else []):
             if L.kind == "layout" and self.name in L.spec.get("graphs", []): L.draw()
         arts, names = [], []

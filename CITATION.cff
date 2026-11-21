@@ -8,8 +8,8 @@ authors:
     email: kishantiwari@iitkgp.ac.in
     orcid: "https://orcid.org/0000-0003-0014-914X"
     affiliation: "Indian Institute of Technology Kharagpur"
-version: "1.31.0"
-date-released: "2026-11-19"
+version: "1.32.0"
+date-released: "2026-11-21"
 license: MIT
 doi: "10.5281/zenodo.24330955"
 repository-code: "https://github.com/kishangeo/PlotBench"

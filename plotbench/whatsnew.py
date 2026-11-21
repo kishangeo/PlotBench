@@ -9,7 +9,8 @@ from pathlib import Path
 
 def changelog_path():
     """CHANGELOG.md beside the program (installed builds) or at the top of the source tree."""
-    for p in (Path(getattr(sys, "_MEIPASS", "")) / "CHANGELOG.md", Path(__file__).resolve().parent.parent / "CHANGELOG.md"):
+    for p in (Path(getattr(sys, "_MEIPASS", "")) / "CHANGELOG.md", Path(sys.executable).resolve().parent / "CHANGELOG.md",
+              Path(__file__).resolve().parent.parent / "CHANGELOG.md"):
         if p.is_file(): return p
     return None
 
@@ -31,6 +32,11 @@ def notes(version):
     return None
 
 
+def muted(parent):
+    from .ui_style import palette
+    return palette(getattr(parent, "_theme", "light"))["muted"]
+
+
 def show(parent, version):
     """A window with the version's release notes. Returns it (None when there are no notes for this version)."""
     from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QDialogButtonBox, QLabel
@@ -39,7 +45,7 @@ def show(parent, version):
     date, body = got
     d = QDialog(parent); d.setWindowTitle(f"What's new in PlotBench {version}"); d.resize(760, 620)
     head = QLabel(f"<h2 style='margin:0'>What's new in PlotBench {version}</h2>"
-                  f"<span style='color:gray'>{'Released ' + date + '. ' if date and 'not yet' not in date else ''}"
+                  f"<span style='color:{muted(parent)}'>{'Released ' + date + '. ' if date and 'not yet' not in date else ''}"
                   "Help &gt; What's New shows this again.</span>")
     box = QTextBrowser(); box.setOpenExternalLinks(True); box.setMarkdown(body)
     bb = QDialogButtonBox(QDialogButtonBox.Ok); bb.accepted.connect(d.accept)
