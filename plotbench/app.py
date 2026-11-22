@@ -48,7 +48,7 @@ from .graphs import (GraphWindow, StyleDialog, LayoutWindow, LayoutDialog, save_
                      set_default_theme, user_dir)
 
 APP = "PlotBench"
-VERSION = "1.32.0"
+VERSION = "1.32.1"
 
 
 class ReportWindow(QTextEdit):

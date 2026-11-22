@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.32.1 (2026-11-22)
 
 - Windows are free by default, each with minimize, maximize and close buttons; a new window fills the work area (Window menu
   still switches to tabs).
