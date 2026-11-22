@@ -55,8 +55,9 @@ fig, a = plt.subplots(figsize=(3.6, 3.2), constrained_layout=True)
 a.add_patch(plt.Rectangle((900, 1.0), 500, 5.0, color="#555555", alpha=0.12, lw=0, label="Calibration range"))
 for i in range(n):
     ins = bool(r["inside"][i]); col = "#0072B2" if ins else "#D55E00"
-    a.errorbar(r["T"][i], r["P"][i] / 10, xerr=r["sT"][i], yerr=r["sP"][i] / 10, fmt="o" if ins else "s", ms=5, mfc="none" if i == k else col,
-               mec=col if i == k else "k", mew=0.8 if i == k else 0.5, ecolor=col, elinewidth=0.8, capsize=0)
+    t = np.linspace(0, 2 * np.pi, 100); rho = r["rho"][i]  # 1-sigma ellipse of the correlated T and P errors
+    a.plot(r["T"][i] + r["sT"][i] * np.cos(t), (r["P"][i] + r["sP"][i] * (rho * np.cos(t) + np.sqrt(1 - rho ** 2) * np.sin(t))) / 10, color=col, lw=0.8)
+    a.plot(r["T"][i], r["P"][i] / 10, "o" if ins else "s", ms=4.5, mfc="none" if i == k else col, mec=col if i == k else "k", mew=0.8 if i == k else 0.5)
 a.plot([], [], "o", color="#0072B2", mec="k", mew=0.5, label="Inside range"); a.plot([], [], "s", color="#D55E00", mec="k", mew=0.5, label="Outside range")
 a.plot([], [], "s", mfc="none", mec="#D55E00", label="Masked (removed)")
 a.set(xlabel="Temperature (°C)", ylabel="Pressure (GPa)", xlim=(1050, 1500), ylim=(4.3, 7.2)); a.invert_yaxis(); a.legend(fontsize=7, loc="lower left")
