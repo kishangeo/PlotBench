@@ -408,6 +408,8 @@ class _AspectHost(QWidget):
         super().__init__(g); self.g = g; g.canvas.setParent(self)
         from PySide6.QtWidgets import QScrollArea
         self.panel = QScrollArea(self); self.panel.setWidgetResizable(True); self.panel.setFrameShape(QScrollArea.NoFrame)
+        from PySide6.QtCore import Qt as _Qt
+        self.panel.setHorizontalScrollBarPolicy(_Qt.ScrollBarAlwaysOff)
         self.panel.setWidget(_shortcut_panel(g)); self.panel.hide()
 
     def ratio(self):
@@ -418,7 +420,7 @@ class _AspectHost(QWidget):
 
     def resizeEvent(self, ev):
         w, h = max(self.width(), 60), max(self.height(), 60); r = self.ratio(); cw = w  # never an empty canvas (Agg cannot draw 0 px)
-        if r and w > h * r + 150: cw = int(h * r)  # wide window: keep the shape, the rest is the shortcut panel
+        if r and w > h * r + 150: cw = max(int(h * r), w - PANEL_W)  # wide window: the panel takes at most PANEL_W, the graph the rest
         self.g.canvas.setGeometry(0, 0, cw, h)
         if w - cw >= 150 and (getattr(self.g.main, "settings", None) or {}).get("graph_panel", True):
             self.panel.setGeometry(cw, 0, w - cw, h); self.panel.show()
@@ -429,6 +431,7 @@ class _AspectHost(QWidget):
         self.resizeEvent(QResizeEvent(self.size(), self.size()))
 
 
+PANEL_W = 230  # width of the shortcut panel beside a graph
 PANEL_FOLDED = ["Draw", "Add", "Arrange", "Analyse", "Output"]  # folded until the user opens them (then remembered)
 GRAPH_SHORTCUTS = [  # (group, label, Main method or callable on the main window); the panel uses whatever width is spare
     ("View", "Zoom in", lambda m: m.need_graph() and m.need_graph().zoom_by(0.8)),
@@ -487,8 +490,9 @@ def _shortcut_panel(g):
         slot = (lambda m=g.main, f=fn: f(m)) if callable(fn) else (lambda m=g.main, f=fn: getattr(m, f)())
         b.clicked.connect(lambda checked=False, s=slot, t=label: (g.main.mdi.setActiveSubWindow(g.parentWidget()) if hasattr(g.main, "mdi") and g.parentWidget() else None,
                                                                  g.main.run_command(t, s) if hasattr(g.main, "run_command") else s()))
-        grid.addWidget(b, row, col); col += 1
-        if col == 2: col = 0; row += 1
+        from PySide6.QtWidgets import QSizePolicy
+        b.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)  # one narrow column; long labels clip, the tooltip shows them
+        grid.addWidget(b, row, 0); row += 1
     outer.addStretch(1); return w
 
 
@@ -505,6 +509,8 @@ class GraphWindow(QWidget):
         self.act_region.setToolTip("Drag across the graph to fit, integrate, get statistics, FFT, find peaks or mask that X range")
         self.act_reader = tb.addAction("Data reader"); self.act_reader.setCheckable(True)
         self.act_reader.setToolTip("Click near a point to read its X, Y and row")
+        sbs = tb.addAction("Side by side"); sbs.setToolTip("Show this graph next to the window used before it (e.g. its sheet); Ctrl+Alt+S")
+        sbs.triggered.connect(lambda: hasattr(self.main, "side_by_side") and self.main.side_by_side())
         self.act_region.toggled.connect(lambda on: (on and self.act_reader.setChecked(False), self.draw()))
         self.act_reader.toggled.connect(lambda on: on and self.act_region.setChecked(False))
         self.canvas.mpl_connect("button_press_event", self._click)

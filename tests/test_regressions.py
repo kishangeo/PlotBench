@@ -259,6 +259,14 @@ class UsabilityTests(unittest.TestCase):
         name = w.thermobarometry(sh, "Ti-in-zircon (Ferry & Watson 2007)", {"Ti (ppm)": "Ti (ppm)", "a SiO2": 1.0, "a TiO2": 1.0}); t0 = sh.arr(name).copy()
         sh.df.loc[0, "Ti (ppm)"] = 50.0; sh.changed(); w.run_ops(); self.assertGreater(sh.arr(name)[0], t0[0] + 50); self.assertAlmostEqual(sh.arr(name)[1], t0[1]); close(w)
 
+    def test_mask_reaches_result_flag_and_monte_carlo_error(self):
+        w = main_window(); sh = w.new_book(pd.DataFrame({"Ti (ppm)": [5.0, 10.0]}), "Z").current()
+        name = w.thermobarometry(sh, "Ti-in-zircon (Ferry & Watson 2007)", {"Ti (ppm)": "Ti (ppm)", "a SiO2": 1.0, "a TiO2": 1.0}, mc={"rel": 0.05, "n": 100})
+        sd = "1s " + name; flag = next(c for c in sh.df.columns if "calibration range" in c)
+        sh.set_mask([("Ti (ppm)", 1)], True); w.run_ops()
+        self.assertTrue(np.isnan(sh.arr(name)[1]) and np.isnan(sh.arr(sd)[1]) and sh.df[flag][1] is None)
+        self.assertTrue(np.isfinite(sh.arr(sd)[0])); close(w)
+
     def test_recovery_copy_written_and_removed(self):
         w = main_window(); w.dirty = False; self.assertIsNone(w.autosave())
         if w._autosaves:  # another PlotBench on this machine may hold the recovery lock

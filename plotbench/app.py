@@ -205,7 +205,7 @@ class Main(QMainWindow):
     def __init__(self):
         super().__init__(); self.setWindowTitle(f"{APP} {VERSION}"); self.resize(1400, 860)
         self.setWindowIcon(app_icon())
-        self.mdi = QMdiArea(); self.mdi.setViewMode(QMdiArea.TabbedView); self.mdi.setTabsClosable(True)
+        self.mdi = QMdiArea(); self.mdi.setTabsClosable(True)  # free windows: each has minimize, maximize and close buttons
         self.mdi.setTabsMovable(True); self.setCentralWidget(self.mdi); self.project_path = None; self.counter = {}
         self.tree = QTreeWidget(); self.tree.setHeaderHidden(True)
         self.tree.itemDoubleClicked.connect(self.explorer_open)
@@ -253,6 +253,7 @@ class Main(QMainWindow):
 
     def add_win(self, w):
         sub = self.mdi.addSubWindow(w); sub.resize(760, 540); sub.setWindowIcon(self.kind_icon(getattr(w, "kind", ""))); w.show(); self.mdi.setActiveSubWindow(sub)
+        if self.mdi.viewMode() == QMdiArea.SubWindowView: sub.showMaximized()  # fills the area; Restore gives a free window with its title bar
         sub.installEventFilter(self); sub.destroyed.connect(lambda *_: self.refresh_explorer()); self.refresh_explorer(); self.mark_dirty()
         return w
 
@@ -1467,9 +1468,12 @@ class Main(QMainWindow):
             try: sd = TB.monte_carlo(method, cols_in, sh.arr, oxides, len(sh.df), rel=mc["rel"], n=nd, num_sd=num_sd, progress=step)
             finally: prog.close(); prog.deleteLater()
             if sd is None: extra += "; Monte Carlo cancelled (no uncertainty column)"
-            else: sh.add_column(f"1s {m['out']} ({m['unit'].replace('deg C', 'C')})", sd, units=m["unit"].replace("deg C", "°C"),
+            else:
+                sdc = sh.add_column(f"1s {m['out']} ({m['unit'].replace('deg C', 'C')})", sd, units=m["unit"].replace("deg C", "°C"),
                           formula=f"Monte Carlo, {mc.get('n', 500)} draws, {100 * mc['rel']:g} % relative 1-sigma on each measured input"
                                   + "".join(f", {k.replace(', if no column', '')} ± {v:g}" for k, v in num_sd.items()), snap=False, desig="yErr")
+                for o in sh.ops:
+                    if o.get("col") == name: o["mc"] = {"rel": mc["rel"], "n": nd, "num_sd": num_sd}; o["sd"] = sdc  # the 1σ column re-runs too
         sh.model.refresh(); sh.changed(); self.mark_dirty()
         ok = np.isfinite(vals)
         self.statusBar().showMessage(f"{method}: {ok.sum()} values in column {name}" + (f" ({(~ok).sum()} rows blank: inputs missing or outside the calibration, e.g. negative site occupancy)" if (~ok).any() else "") + extra, 12000)
@@ -2928,6 +2932,9 @@ class Main(QMainWindow):
         if op.get("flag") in sh.df.columns and op["method"] in TB.VALID:
             flag = TB.in_range(op["method"], vals, {k: (sh.arr(v) if isinstance(v, str) else v) for k, v in cols_in.items() if v is not None}, len(sh.df))
             sh.df[op["flag"]] = np.where(np.isnan(flag), None, np.where(flag == 1, "yes", "no")).astype(object)
+        if op.get("sd") in sh.df.columns and op.get("mc"):  # a masked or edited input changes the Monte Carlo error as well
+            mc = op["mc"]; sd = TB.monte_carlo(op["method"], cols_in, sh.arr, ox, len(sh.df), rel=mc["rel"], n=int(mc["n"]), num_sd=mc.get("num_sd") or {})
+            if sd is not None: sh.df[op["sd"]] = np.asarray(sd, float)
         sh.model.refresh(); self.schedule_graphs(sh)
         self.statusBar().showMessage(f"{op['col']} recalculated ({op['method']})", 5000)
 
