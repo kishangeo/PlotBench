@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Windows are free by default, each with minimize, maximize and close buttons; a new window fills the work area (Window menu
+  still switches to tabs).
+- Graph windows have a "Side by side" toolbar button (Ctrl+Alt+S) that puts the graph next to the window used before it.
+- The shortcut panel beside a graph is at most 230 px wide, in one column; the graph gets the rest of the window.
+- Masking an input now also recalculates the Monte Carlo 1-sigma column of a thermobarometry result, not only the result and its flag.
+- validation/crosscheck: PlotBench against Thermobar 1.0.75 (five Putirka 2008 equations, 1259 experiments) and IsoplotR 7.2
+  (York regression, concordia age) on identical inputs, and a natural example (13 garnet peridotites of Tappe et al. 2021).
+
 ## 1.32.0 (2026-11-21)
 
 - Thermobarometry and the Coupled P-T Solver: the method lists are grouped by mineral or assemblage and have a search box; methods
