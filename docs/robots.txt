@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://plotbench.vercel.app/sitemap.xml
