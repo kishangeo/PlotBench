@@ -85,6 +85,20 @@ for start in (1.0, 10.0, 60.0):
     facts["coupled"][f"start_{start:g}_kbar"] = {"iterations": int(itc), "converged": int(np.isfinite(Tc).sum()), "dT_mean": float(np.mean(Tc - runs[:, 1])),
         "dT_sd": float(np.std(Tc - runs[:, 1], ddof=1)), "dP_mean_GPa": float(np.mean(Pc - runs[:, 0]) / 10), "dP_sd_GPa": float(np.std(Pc - runs[:, 0], ddof=1) / 10)}
 
+# ---- coupled Monte Carlo against first-order propagation through the coupled solution (central differences, 2 % on every input)
+TM_, PM_ = "Ca-in-orthopyroxene (Brey & Kohler 1990)", "Garnet-orthopyroxene Al (Brey & Kohler 1990, PBKN)"
+solve_ = lambda src: TB.solve_pt(TM_, PM_, cols_, lambda c: np.asarray(src[c], float), dict, n_iter=400, tol=1e-8)[:2]
+J = np.zeros((2, len(TB.BREY_RUNS), len(o)))
+for j, k_ in enumerate(o):
+    x_ = np.asarray(o[k_], float); (Tu, Pu), (Td, Pd) = solve_({**o, k_: x_ * (1 + 1e-5)}), solve_({**o, k_: x_ * (1 - 1e-5)})
+    J[0, :, j], J[1, :, j] = (Tu - Td) / 2e-5 * 0.02, (Pu - Pd) / 2e-5 * 0.02
+cv = np.einsum("ain,bin->abi", J, J); sTl, sPl = np.sqrt(cv[0, 0]), np.sqrt(cv[1, 1])
+sT_, sP_, r_ = TB.solve_pt_mc(TM_, PM_, cols_, arr_, dict, rel=0.02, n=5000, seed=3)
+facts["coupled_mc"] = {"draws": 5000, "max_rel_diff_sT_pct": float(np.max(np.abs(sT_ / sTl - 1)) * 100),
+                       "max_rel_diff_sP_pct": float(np.max(np.abs(sP_ / sPl - 1)) * 100), "max_abs_diff_rho": float(np.max(np.abs(r_ - cv[0, 1] / sTl / sPl))),
+                       "rho_range": [float(np.min(r_)), float(np.max(r_))], "sT_range": [float(np.min(sT_)), float(np.max(sT_))],
+                       "sP_range_GPa": [float(np.min(sP_) / 10), float(np.max(sP_) / 10)]}
+
 # ---- timings (one core)
 n = 1000; rs = np.random.default_rng(0)
 liq = {"SiO2": 47.05, "TiO2": 0.89, "Al2O3": 16.11, "FeO": 7.96, "MnO": 0.15, "MgO": 12.78, "CaO": 11.13, "Na2O": 2.18, "K2O": 0.04}

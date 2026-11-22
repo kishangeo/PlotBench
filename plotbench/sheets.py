@@ -766,6 +766,7 @@ class Sheet(QWidget):
         """Axis label from long name and units, falling back to the short name."""
         if c is None: return "Row"
         m = self.meta.get(c, {}); ln = m.get("Long Name") or str(c); u = m.get("Units")
+        if u and not m.get("Long Name"): ln = __import__("re").sub(r"\s*\([^()]*\)$", "", ln)  # "T (C)" with units °C reads "T (°C)", not "T (C) (°C)"
         return f"{ln} ({u})" if u else ln
 
     def selected_cols(self):

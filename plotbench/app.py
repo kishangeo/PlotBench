@@ -1448,9 +1448,9 @@ class Main(QMainWindow):
             rng = TB.VALID[method]; flag = TB.in_range(method, vals, given, len(sh.df))
             word = "in equilibrium" if rng.get("kind") == "equilibrium" else "in calibration range"
             sh.add_column(f"{m['out']} {word}", np.where(np.isnan(flag), None, np.where(flag == 1, "yes", "no")).astype(object),
-                          formula=f"{method}: {rng['ref']}", snap=False)
+                          formula=f"{method}: {rng['ref']}", snap=False, desig="Label")
             nout = int(np.nansum(flag == 0))
-            if nout: extra = f"; {nout} rows {'not in equilibrium' if rng.get('kind') == 'equilibrium' else 'outside the calibration range'} ({rng['ref']})"
+            if nout: extra = f"; {nout} row{'s' if nout != 1 else ''} {'not in equilibrium' if rng.get('kind') == 'equilibrium' else 'outside the calibration range'} ({rng['ref']})"
         if all(isinstance(v, (str, int, float, bool, type(None))) for v in (inputs or {}).values()):  # re-run when the data change
             flagc = next((str(c) for c in sh.df.columns if str(c).startswith(f"{m['out']} in ")), None) if method in TB.VALID else None
             sh.ops = [o for o in sh.ops if o.get("col") != name] + [{"kind": "tb", "method": method, "inputs": dict(inputs or {}), "col": name, "flag": flagc, "y": name}]
@@ -1699,9 +1699,9 @@ class Main(QMainWindow):
             fp = TB.in_range(pmethod, P, {**given, "T (C) column": None, "T (C), if no column": T}, len(sh.df))
             known = ~(np.isnan(ft) & np.isnan(fp)); good = np.where(np.isnan(ft), 1, ft) * np.where(np.isnan(fp), 1, fp)
             sh.add_column("P-T in calibration range", np.where(known, np.where(good == 1, "yes", "no"), None).astype(object),
-                          formula="; ".join(TB.VALID[m]["ref"] for m in (tmethod, pmethod) if m in TB.VALID), snap=False)
+                          formula="; ".join(TB.VALID[m]["ref"] for m in (tmethod, pmethod) if m in TB.VALID), snap=False, desig="Label")
             nout = int(np.sum(known & (good == 0)))
-            if nout: note = f"; {nout} rows outside the calibration range"
+            if nout: note = f"; {nout} row{'s' if nout != 1 else ''} outside the calibration range"
         if mc:
             from PySide6.QtWidgets import QProgressDialog
             nd = int(mc.get("n", 200)); prog = QProgressDialog(f"Monte Carlo uncertainty: {nd} solutions...", "Cancel", 0, nd, self)
