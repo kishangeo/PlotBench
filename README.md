@@ -11,6 +11,8 @@ publication-ready figures without writing code. It runs on Windows, macOS and Li
 
 **Website:** https://plotbench.vercel.app/ &nbsp;·&nbsp; **Download:** [latest release](https://github.com/kishangeo/PlotBench/releases/latest)
 
+[![Get it from Microsoft](https://get.microsoft.com/images/en-us%20dark.svg)](https://apps.microsoft.com/detail/9N5G5C33FFKC?mode=direct)
+
 ![PlotBench main window](docs/img/window.png)
 
 ## What it does
@@ -30,6 +32,7 @@ A user manual with screenshots is built in (Help > User Manual, F1), and 29 exam
 
 | System | File | Notes |
 |---|---|---|
+| Windows 10/11 | [Microsoft Store](https://apps.microsoft.com/detail/9N5G5C33FFKC?mode=direct) | Recommended: signed by Microsoft, updates automatically. |
 | Windows 10/11 | `PlotBench-<version>-Setup.exe` | Run the installer. It installs for your user only, so no administrator rights are needed. |
 | macOS (Apple silicon) | `PlotBench-<version>-macos-arm64.dmg` | Open the disk image and drag PlotBench to Applications. |
 | macOS (Intel) | `PlotBench-<version>-macos-intel.dmg` | As above. |

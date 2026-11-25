@@ -106,6 +106,7 @@ a:focus-visible,.btn:focus-visible{outline:3px solid var(--accent);outline-offse
 @media (max-width:980px){.grid,.dl{grid-template-columns:repeat(2,1fr)}.gallery{grid-template-columns:repeat(2,1fr)}.cite{grid-template-columns:1fr}}
 @media (max-width:640px){nav a:not(.cta){display:none}.grid,.dl,.steps{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.stats div:nth-child(2){border-right:none}.stats div:nth-child(-n+2){border-bottom:1px solid var(--border)}section{padding:68px 0}.hero{padding-top:56px}.frame .bar span{display:none}}
 .notes ul,.rel ul{margin:0;padding-left:20px;color:var(--muted);font-size:15px}.notes li,.rel li{margin:6px 0}.notes{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px 28px}.older{margin:48px 0 4px;font-size:20px}.rel{border:1px solid var(--border);border-radius:12px;background:var(--panel);margin:10px 0;padding:0 20px}.rel summary{cursor:pointer;padding:14px 0;display:flex;gap:14px;align-items:baseline}.rel summary span{color:var(--muted);font-size:14px}.rel[open]{padding-bottom:16px}.rel .files{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 10px;font-size:14.5px}
+.store{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 20px;color:var(--muted)}.msstore img{display:block;height:auto}
 </style>
 <meta name="google-site-verification" content="CPbmoC5IVi2JzPWrs7JGABz7Cy6x5zpnLZCCRUCdGr0" />
 <meta name="google-site-verification" content="L25p3KfmoKL6BcGNV8zN67EQ0H8uU5PE5-fLvBq-n94" />
@@ -202,6 +203,7 @@ a:focus-visible,.btn:focus-visible{outline:3px solid var(--accent);outline-offse
   <div class="eyebrow">Download</div>
   <h2>Get PlotBench 1.32.1</h2>
   <p class="lead">Free for everyone, under the MIT License. Older versions are on the <a href="https://github.com/kishangeo/PlotBench/releases">Releases page</a>.</p>
+  <p class="store"><a class="msstore" href="https://apps.microsoft.com/detail/9N5G5C33FFKC?mode=direct"><img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get it from Microsoft"></a><span>Recommended for Windows 10 and 11: no SmartScreen warning, and updates install automatically.</span></p>
   <div class="dl">
     <div class="card"><h3>Windows</h3><span class="os">Windows 10 and 11 · 64-bit installer</span><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/download/v1.32.1/PlotBench-1.32.1-Setup.exe">Download .exe</a></div>
     <div class="card"><h3>macOS</h3><span class="os">Apple silicon (M1 and later)</span><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/download/v1.32.1/PlotBench-1.32.1-macos-arm64.dmg">Download .dmg</a></div>
@@ -209,7 +211,7 @@ a:focus-visible,.btn:focus-visible{outline:3px solid var(--accent);outline-offse
     <div class="card"><h3>Linux</h3><span class="os">x86-64 · tar.gz</span><a class="btn" href="https://github.com/kishangeo/PlotBench/releases/download/v1.32.1/PlotBench-1.32.1-linux-x86_64.tar.gz">Download .tar.gz</a></div>
   </div>
   <div class="steps">
-    <div><b>Windows.</b> The installer is not code-signed, so SmartScreen may warn you. Download only from this page or the GitHub Releases page, and check the file against the SHA-256 checksum shown there before running it. No administrator rights are needed.</div>
+    <div><b>Windows.</b> The <a href="https://apps.microsoft.com/detail/9N5G5C33FFKC?mode=direct">Microsoft Store</a> version is signed by Microsoft and updates itself. The installer below is not code-signed, so SmartScreen may warn you. Download only from this page or the GitHub Releases page, and check the file against the SHA-256 checksum shown there before running it. No administrator rights are needed.</div>
     <div><b>macOS.</b> The app is not notarised by Apple. Drag it to Applications and open it; when macOS says it could not verify PlotBench, click Done, then go to System Settings &gt; Privacy &amp; Security and click <b>Open Anyway</b>. Details are in README-FIRST on the disk image.</div>
     <div><b>Linux.</b> Unpack and run <code>./PlotBench</code>, or <code>./install.sh</code> for a menu entry.</div>
   </div>
